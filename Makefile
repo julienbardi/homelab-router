@@ -146,12 +146,12 @@ dnsmasq-restart: $(DNSMASQ_CHANGED) | ssh-check
 .PHONY: dnsmasq-cache
 dnsmasq-cache: $(DNSMASQ_CHANGED) dnsmasq-show
 
-$(DNSMASQ_CHANGED): dnsmasq-restart
+# $(DNSMASQ_CHANGED) exists iff dnsmasq config semantics changed
 
 .PHONY: FORCE
 FORCE:
 
-$(DNSMASQ_CHANGED): FORCE | ssh-check
+$(DNSMASQ_CHANGED): FORCE dnsmasq-restart | ssh-check
 	@echo "🧠 Ensuring dnsmasq cache configuration..."
 	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
 		mkdir -p /jffs/configs && \
