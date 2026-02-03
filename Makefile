@@ -61,10 +61,10 @@ ssh-check:
 .PHONY: install-ddns
 install-ddns: ssh-check
 	@echo "📡 Installing DynDNS script on router..."
-	ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) "mkdir -p $(ROUTER_SCRIPTS)"
-	scp -P $(ROUTER_SSH_PORT) "$(REPO_ROOT)/ddns/ddns-start" \
+	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) "mkdir -p $(ROUTER_SCRIPTS)"
+	@scp -q -O -P $(ROUTER_SSH_PORT) "$(REPO_ROOT)/ddns/ddns-start" \
 		$(ROUTER_HOST):$(ROUTER_SCRIPTS)/ddns-start
-	ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
+	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
 		"chmod 755 $(ROUTER_SCRIPTS)/ddns-start"
 	@echo "✨ DynDNS installation complete."
 
