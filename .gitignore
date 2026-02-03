@@ -13,3 +13,9 @@ caddy/data/
 *.swp
 *.tmp
 *~
+
+# Dnsmasq cache change marker
+.dnsmasq-cache-changed
+
+# Folder for local tools (e.g. checkmake)
+.tools/
