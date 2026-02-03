@@ -146,6 +146,8 @@ dnsmasq-restart: $(DNSMASQ_CHANGED) | ssh-check
 .PHONY: dnsmasq-cache
 dnsmasq-cache: $(DNSMASQ_CHANGED) dnsmasq-show
 
+$(DNSMASQ_CHANGED): dnsmasq-restart
+
 .PHONY: FORCE
 FORCE:
 
