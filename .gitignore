@@ -19,3 +19,4 @@ caddy/data/
 
 # Folder for local tools (e.g. checkmake)
 .tools/
+/bin/caddy
