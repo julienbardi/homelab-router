@@ -7,11 +7,12 @@
 #
 # 🌐 Infomaniak setup:
 # 1. Log in to https://manager.infomaniak.com/
-# 2. Go to: Domain → Dynamic DNS
-# 3. Create an identifier:
-#       Identifiant  → DDNSUSERNAME
-#       Mot de passe → DDNSPASSWORD
-# 4. These credentials are used ONLY for DynDNS updates.
+# 2. Go to: Products>Web & Domains>Domain 
+# 3. Select the domain, then Dynamic DNS
+# 4. Create an login:
+#       Username (login)  → DDNSUSERNAME
+#       Password          → DDNSPASSWORD
+# 5. These credentials are used ONLY for DynDNS updates.
 #
 # 🧪 Debugging:
 # Set DEBUG=1 to print diagnostic output during updates.
