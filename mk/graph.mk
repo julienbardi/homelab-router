@@ -121,14 +121,6 @@ install-caddy-reload:
 		echo "✨ Reload script already up-to-date"; \
 	fi
 
-
-.PHONY: all
-all: install-ddns dnsmasq-cache firewall-started
-
-.PHONY: all-full
-all-full: all caddy
-	@echo "✅ Router and Caddy fully converged"
-
 # ------------------------------------------------------------
 # SSH preflight
 # ------------------------------------------------------------
@@ -292,11 +284,6 @@ dnsmasq-cache: dnsmasq-restart-if-needed
 # ------------------------------------------------------------
 # Tooling
 # ------------------------------------------------------------
-
-.PHONY: clean
-clean:
-	@rm -f $(DNSMASQ_CHANGED) $(SENTINEL_FW_INST) $(SENTINEL_FW_START)
-	@echo "🧹 Local state cleaned"
 
 # NOTE:
 # checkmake's maxbodylength rule is intentionally ignored.
@@ -751,9 +738,6 @@ test-postinstall: ssh-check require-arm64 require-caddy caddy-validate caddy-sta
 .PHONY: test-preinstall
 test-preinstall: ssh-check require-arm64
 	@echo "✅ Pre-install invariants validated"
-
-.PHONY: test
-test: test-preinstall
 
 # ------------------------------------------------------------
 # Cleanup
