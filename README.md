@@ -47,13 +47,13 @@ This project turns the router into a reproducible, script‑driven control‑pla
 ```sh
 git clone git#github.com:julienbardi/homelab-router.git
 cd homelab-router
-`
+```
 
 ### 2. Validate SSH access
 
-`sh
+```sh
 make ssh-check
-`
+```
 
 Ensures connectivity and port configuration before any deployment.
 
@@ -63,7 +63,7 @@ Adjust the DynDNS config template, then:
 
 ```sh
 make dyndns-deploy
-`
+```
 
 Installs the DynDNS script and configuration onto the router.
 
@@ -72,7 +72,7 @@ Installs the DynDNS script and configuration onto the router.
 ```sh
 make caddy-install
 make caddy-reload
-`
+```
 
 Installs the Caddy binary and reloads configuration via router‑side scripts.
 
