@@ -1,0 +1,15 @@
+# Secrets (never committed)
+ddns/.ddns_confidential
+caddy/env
+
+# WireGuard private keys and runtime files
+wireguard/*.key
+wireguard/*.runtime
+
+# Caddy ACME storage
+caddy/data/
+
+# Editor noise
+*.swp
+*.tmp
+*~

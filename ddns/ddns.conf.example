@@ -1,0 +1,4 @@
+DNS_TOPDOMAIN_NAME="bardi.ch"
+DDNSUSERNAME="your_infomaniak_username"
+DDNSPASSWORD="your_infomaniak_token"
+DEBUG=0
