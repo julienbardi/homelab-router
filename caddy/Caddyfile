@@ -1,8 +1,18 @@
 # ------------------------------------------------------------
 # EDGE CADDY — ROUTER (10.89.12.1)
 #
-# This Caddy instance terminates TLS and enforces access policy.
-# All backends are reached via LAN IPs — never loopback.
+# Responsibilities:
+#   - TLS termination
+#   - Host exposure
+#   - Access policy (LAN / VPN / WAN)
+#
+# Non-responsibilities:
+#   - Application routing
+#   - Health checks
+#   - Port fan-out
+#
+# All application logic for 10.89.12.4 is delegated to its
+# local Caddy instance.
 #
 # DO NOT bind :80.
 # DO NOT proxy via 127.0.0.1.
@@ -10,6 +20,19 @@
 {
 	auto_https off
 	admin off
+
+	log {
+		output file /tmp/mnt/sda/router/logs/caddy.log {
+			roll_size 5MiB
+			roll_keep 3
+			roll_keep_for 168h
+		}
+		level INFO
+		# Active reverse_proxy health checks may legitimately fail when
+		# optional backends are offline. These failures are expected and
+		# should not pollute logs or trigger operator concern.
+		exclude http.handlers.reverse_proxy.health_checker.active
+	}
 }
 
 # ------------------------------------------------------------
@@ -23,90 +46,29 @@ bardi.ch:8384 {
 # Consolidated HTTPS listener (edge)
 # ------------------------------------------------------------
 :443 {
-	# CHANGE: Swapped 'internal' for 'infomaniak'
 	tls {
 		dns infomaniak {env.INFOMANIAK_API_TOKEN}
 	}
 
 	# --------------------------------------------------------
-	# DNS over HTTPS (public)
-	# Backend moved off loopback (UGOS rule)
-	# --------------------------------------------------------
-	@doh {
-		host dns.bardi.ch
-		path /dns-query
-	}
-	reverse_proxy @doh https://10.89.12.4:8053 {
-		transport http {
-			tls
-			tls_insecure_skip_verify
-		}
-	}
-
-	# --------------------------------------------------------
 	# DiskStation main HTTPS site (WAN)
 	# --------------------------------------------------------
-	@bardi_internal {
+	@bardi {
 		host bardi.ch
 	}
-	reverse_proxy @bardi_internal 10.89.12.2:443 {
+	reverse_proxy @bardi 10.89.12.2:443 {
 		header_up Host bardi.ch
 	}
 
 	# --------------------------------------------------------
 	# DSM management (internal only)
 	# --------------------------------------------------------
-	@syno5001_internal {
+	@syno_internal {
 		host bardi.ch
 		remote_ip 10.89.12.0/24
 		remote_ip fd89:7a3b:42c0::/64
 	}
-	reverse_proxy @syno5001_internal 10.89.12.2:5001 {
-		header_up Host bardi.ch
-	}
-
-	# --------------------------------------------------------
-	# Synology service (internal only)
-	# --------------------------------------------------------
-	@syno5006_internal {
-		host bardi.ch
-		remote_ip 10.89.12.0/24
-		remote_ip fd89:7a3b:42c0::/64
-	}
-	reverse_proxy @syno5006_internal 10.89.12.2:5006 {
-		header_up Host bardi.ch
-	}
-
-	# --------------------------------------------------------
-	# Synology Drive (internal only)
-	# --------------------------------------------------------
-	@syno6690_internal {
-		host bardi.ch
-		remote_ip 10.89.12.0/24
-		remote_ip fd89:7a3b:42c0::/64
-	}
-	reverse_proxy @syno6690_internal 10.89.12.2:6690 {
-		header_up Host bardi.ch
-	}
-
-	# --------------------------------------------------------
-	# Headscale control plane (external allowed, API hidden)
-	# --------------------------------------------------------
-	@vpn {
-		host vpn.bardi.ch
-	}
-	reverse_proxy @vpn 10.89.12.4:8910 {
-		header_up Host vpn.bardi.ch
-		header_up X-Forwarded-Proto https
-	}
-
-	# --------------------------------------------------------
-	# DERP relay (external)
-	# --------------------------------------------------------
-	@derp {
-		host derp.bardi.ch
-	}
-	reverse_proxy @derp 10.89.12.4:8912
+	reverse_proxy @syno_internal 10.89.12.2:5001
 
 	# --------------------------------------------------------
 	# QNAP (internal only)
@@ -119,17 +81,7 @@ bardi.ch:8384 {
 	reverse_proxy @qnap_internal 10.89.12.3:8080
 
 	# --------------------------------------------------------
-	# NAS internal service (internal only)
-	# --------------------------------------------------------
-	@nas_internal {
-		host nas.bardi.ch
-		remote_ip 10.89.12.0/24
-		remote_ip fd89:7a3b:42c0::/64
-	}
-	reverse_proxy @nas_internal 10.89.12.4:9999
-
-	# --------------------------------------------------------
-	# Router UI (internal only, optional)
+	# Router UI (internal only)
 	# --------------------------------------------------------
 	@router_internal {
 		host router.bardi.ch
@@ -139,56 +91,19 @@ bardi.ch:8384 {
 	reverse_proxy @router_internal 10.89.12.1:8080
 
 	# --------------------------------------------------------
-	# Dev IDE (internal + VPN)
+	# NAS-hosted services (delegated)
 	# --------------------------------------------------------
-	@dev_internal {
-		host dev.bardi.ch
-
-		# LAN
-		remote_ip 10.89.12.0/24
-		remote_ip fd89:7a3b:42c0::/64
-
-		# WireGuard
-		remote_ip 10.0.0.0/8
-		remote_ip fd89:7a3b:42c0::/48
-
-		# Tailscale
-		remote_ip 100.64.0.0/10
-	}
-	reverse_proxy @dev_internal 10.89.12.4:8080 {
-		header_up Host dev.bardi.ch
+	@nas_services {
+		host \
+ dns.bardi.ch \
+ vpn.bardi.ch \
+ derp.bardi.ch \
+ dev.bardi.ch \
+ apt.bardi.ch \
+ nas.bardi.ch
 	}
 
-	# --------------------------------------------------------
-	# apt-cacher-ng (internal only, health-gated)
-	# --------------------------------------------------------
-	@apt_internal {
-		host apt.bardi.ch
-
-		remote_ip 10.89.12.0/24
-		remote_ip fd89:7a3b:42c0::/64
-		remote_ip 10.0.0.0/8
-		remote_ip fd89:7a3b:42c0::/48
-		remote_ip 100.64.0.0/10
-	}
-
-	handle @apt_internal {
-		# Non-blocking reverse proxy
-		reverse_proxy 10.89.12.4:3142 {
-			header_up Host apt.bardi.ch
-
-			# Make health checks NON-BLOCKING
-			health_uri /acng-report.html
-			health_interval 10s
-			health_timeout 1s
-			fail_duration 0s
-		}
-		# If upstream is down, return 503
-		@backend_down {
-			expression {http.reverse_proxy.error} != ""
-		}
-		respond @backend_down "APT cache temporarily unavailable" 503
-	}
+	reverse_proxy @nas_services 10.89.12.4:443
 
 	# --------------------------------------------------------
 	# Unknown host fallback

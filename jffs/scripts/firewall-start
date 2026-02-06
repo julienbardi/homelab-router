@@ -26,9 +26,9 @@ WG_IF_MAX="15"
 # Port-forward WireGuard from WAN → NAS
 #
 if ! iptables -t nat -C PREROUTING -i eth0 -p udp --dport 51420:51435 \
-        -j DNAT --to-destination "$NAS4" 2>/dev/null; then
-        iptables -t nat -A PREROUTING -i eth0 -p udp --dport 51420:51435 \
-                -j DNAT --to-destination "$NAS4"
+		-j DNAT --to-destination "$NAS4" 2>/dev/null; then
+		iptables -t nat -A PREROUTING -i eth0 -p udp --dport 51420:51435 \
+				-j DNAT --to-destination "$NAS4"
 fi
 
 #
@@ -42,9 +42,9 @@ if ! iptables -C FORWARD -p udp -d "$NAS4" --dport 51420:51435 \
 fi
 
 if ! iptables -C FORWARD -p udp -s "$NAS4" --sport 51420:51435 \
-    -m conntrack --ctstate ESTABLISHED -j ACCEPT 2>/dev/null; then
-    iptables -I FORWARD -p udp -s "$NAS4" --sport 51420:51435 \
-        -m conntrack --ctstate ESTABLISHED -j ACCEPT
+	-m conntrack --ctstate ESTABLISHED -j ACCEPT 2>/dev/null; then
+	iptables -I FORWARD -p udp -s "$NAS4" --sport 51420:51435 \
+		-m conntrack --ctstate ESTABLISHED -j ACCEPT
 fi
 
 #
@@ -53,19 +53,19 @@ fi
 #
 n="$WG_IF_MIN"
 while [ "$n" -le "$WG_IF_MAX" ]; do
-        WG_IF="wg${n}"
+		WG_IF="wg${n}"
 
-        if ! iptables -C FORWARD -i "$WG_IF" -o br0 -j ACCEPT 2>/dev/null; then
-                iptables -I FORWARD -i "$WG_IF" -o br0 -j ACCEPT
-        fi
+		if ! iptables -C FORWARD -i "$WG_IF" -o br0 -j ACCEPT 2>/dev/null; then
+				iptables -I FORWARD -i "$WG_IF" -o br0 -j ACCEPT
+		fi
 
-        if ! iptables -C FORWARD -i br0 -o "$WG_IF" \
-                -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null; then
-                iptables -I FORWARD -i br0 -o "$WG_IF" \
-                        -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-        fi
+		if ! iptables -C FORWARD -i br0 -o "$WG_IF" \
+				-m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null; then
+				iptables -I FORWARD -i br0 -o "$WG_IF" \
+						-m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+		fi
 
-        n=$((n + 1))
+		n=$((n + 1))
 done
 
 #
@@ -73,9 +73,9 @@ done
 # Allow inbound HTTPS to router itself (Caddy on :443)
 #
 if ! iptables -C INPUT -i eth0 -p tcp --dport 443 \
-        -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT 2>/dev/null; then
-        iptables -I INPUT -i eth0 -p tcp --dport 443 \
-                -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+		-m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT 2>/dev/null; then
+		iptables -I INPUT -i eth0 -p tcp --dport 443 \
+				-m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
 fi
 
 #
@@ -83,11 +83,11 @@ fi
 # Allow inbound HTTPS to router itself (Caddy on :443)
 #
 if command -v ip6tables >/dev/null 2>&1; then
-        if ! ip6tables -C INPUT -i eth0 -p tcp --dport 443 \
-                -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT 2>/dev/null; then
-                ip6tables -I INPUT -i eth0 -p tcp --dport 443 \
-                        -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
-        fi
+		if ! ip6tables -C INPUT -i eth0 -p tcp --dport 443 \
+				-m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT 2>/dev/null; then
+				ip6tables -I INPUT -i eth0 -p tcp --dport 443 \
+						-m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+		fi
 fi
 
 #
@@ -161,10 +161,10 @@ while [ "$n" -le "$WG_IF_MAX" ]; do
 	# IPv4: 10.<n>.0.0/16
 	ip route replace "10.${n}.0.0/${WG_V4_PREFIXLEN}" via "$NAS4" dev br0 || true
 
-        # IPv6 (legacy removed):
-        # Delegated-prefix routing to WireGuard clients used to live here.
-        # Retired in favor of ULA-only WireGuard + NAT66 for IPv6 Internet.
-        # Do not re-enable delegated IPv6 routing.
+		# IPv6 (legacy removed):
+		# Delegated-prefix routing to WireGuard clients used to live here.
+		# Retired in favor of ULA-only WireGuard + NAT66 for IPv6 Internet.
+		# Do not re-enable delegated IPv6 routing.
 
 	n=$((n + 1))
 done
@@ -206,5 +206,24 @@ if [ -n "$DUP4" ] || [ -n "$DUP6" ]; then
 #     echo "✅ Firewall audit: no duplicated FORWARD rules"
 fi
 
-sh /jffs/scripts/firewall start skynetloc=/tmp/mnt/sda/skynet || \
-    echo "⚠️  Skynet busy — firewall invariants applied, Skynet skipped"
+# Skynet (best-effort, boot-only)
+if [ -x /jffs/scripts/firewall ] && [ ! -f /tmp/skynet.lock ]; then
+	echo "🛡️  Starting Skynet (best-effort)"
+	sh /jffs/scripts/firewall start skynetloc=/tmp/mnt/sda/skynet || \
+		echo "⚠️  Skynet failed — continuing without it"
+fi
+
+# ------------------------------------------------------------------------------
+# Bridge stabilization (AiMesh / switch recovery)
+# ASUSWRT-Merlin may apply firewall rules before all LAN interfaces are attached.
+# Force a clean bridge forwarding state once everything is up.
+# ------------------------------------------------------------------------------
+
+sleep 10
+
+if ip link show br0 >/dev/null 2>&1; then
+	echo "🔧 Stabilizing LAN bridge (br0)"
+	ip link set br0 down
+	sleep 1
+	ip link set br0 up
+fi

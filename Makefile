@@ -18,7 +18,6 @@ all-full: all caddy
 
 .PHONY: clean
 clean:
-	@rm -f $(DNSMASQ_CHANGED) $(SENTINEL_FW_INST) $(SENTINEL_FW_START)
 	@echo "🧹 Local state cleaned"
 
 .PHONY: test
