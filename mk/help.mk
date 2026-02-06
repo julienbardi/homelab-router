@@ -51,9 +51,10 @@ help:
 	@echo "  make caddy-health           Full Caddy health check"
 	@echo
 	@echo "Firewall:"
-	@echo "  make firewall               Install and apply firewall rules"
-	@echo "  make firewall-install       Ensure firewall script is installed"
-	@echo "  make firewall-started       Ensure firewall rules are applied"
+	@echo "  make firewall               Assert Skynet is actively enforcing"
+	@echo "  make firewall-install       Ensure firewall hook script is installed"
+	@echo "  make firewall-started       Assert base firewall is running"
+	@echo "  make firewall-hardened      Assert firewall + Skynet enforcement"
 	@echo
 	@echo "Maintenance:"
 	@echo "  make clean                  Remove local state files"

@@ -11,7 +11,6 @@
 #   - Router diagnostics and invariants
 #
 # Concurrency:
-#   - All targets in this file mutate router state
 #   - Targets listed in .NOTPARALLEL MUST NOT run concurrently
 #
 # Contracts:
@@ -21,35 +20,37 @@
 # ------------------------------------------------------------
 .NOTPARALLEL: \
 	firewall-install \
-	firewall-ensure \
-	firewall-started \
-	firewall \
 	dnsmasq-cache \
 	install-run-as-root \
 	install-ddns \
 	install-caddy \
-	install-certs \
-	require-run-as-root \
-	ssh-check
+	install-certs
 
 define deploy_if_changed
-	@LOCAL_SHA=$$(sha256sum $(1) | awk '{print $$1}'); \
+	@set -e; \
+	SRC="$$(echo '$(1)' | sed 's/^ *//;s/ *$$//')"; \
+	DST="$$(echo '$(2)' | sed 's/^ *//;s/ *$$//')"; \
+	LOCAL_SHA=$$(sha256sum "$$SRC" | awk '{print $$1}'); \
 	REMOTE_SHA=$$(ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
-		"sha256sum $(2) 2>/dev/null | awk '{print \$$1}'" || true); \
+		"sha256sum \"$$DST\" 2>/dev/null | awk '{print \$$1}'" || true); \
 	if [ "$$LOCAL_SHA" != "$$REMOTE_SHA" ]; then \
-		echo "🚀 Deploying $(notdir $(2))..."; \
-		ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) "mkdir -p $(dir $(2))"; \
-		scp -q -O -P $(ROUTER_SSH_PORT) $(1) $(ROUTER_HOST):$(2); \
-		ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) "chmod 0755 $(2)"; \
-		echo "✅ $(notdir $(2)) updated"; \
+		echo "🚀 Deploying $$(basename "$$DST")..."; \
+		ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
+			"mkdir -p \"$$(dirname "$$DST")\""; \
+		scp -q -O -P $(ROUTER_SSH_PORT) \
+			"$$SRC" "$(ROUTER_HOST):$$DST"; \
+		ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
+			"chmod 0755 \"$$DST\""; \
+		echo "✅ $$(basename "$$DST") updated"; \
 	else \
-		echo "✨ $(notdir $(2)) already up-to-date"; \
+		echo "✨ $$(basename "$$DST") already up-to-date"; \
 	fi
 endef
 
+
 .PHONY: router-ready
-router-ready: firewall-started dnsmasq-cache
-	@echo "🛡️  Router base services converged"
+router-ready: firewall-hardened dnsmasq-cache
+	@echo "🛡️ Router base services converged"
 
 .PHONY: router-prepare
 router-prepare: router-ready require-run-as-root fix-acme-perms
@@ -73,10 +74,16 @@ ssh-check:
 		echo "Install it with: sudo apt install netcat-openbsd"; \
 		exit 1; \
 	)
+	@nc -z -w 2 $(ROUTER_ADDR) $(ROUTER_SSH_PORT) >/dev/null 2>&1 || \
+	( \
+		echo "❌ Router unreachable on $(ROUTER_ADDR):$(ROUTER_SSH_PORT)"; \
+		echo "   (host down, port filtered, or network issue)"; \
+		exit 1; \
+	)
 	@ssh -p $(ROUTER_SSH_PORT) -o BatchMode=yes -o ConnectTimeout=5 \
 		$(ROUTER_HOST) true >/dev/null 2>&1 || \
 	( \
-		echo "❌ SSH preflight failed"; \
+		echo "❌ SSH reachable but authentication failed"; \
 		exit 1; \
 	)
 
@@ -118,18 +125,31 @@ firewall-install: | ssh-check require-run-as-root
 		$(SRC_SCRIPTS)/firewall-start,\
 		/jffs/scripts/firewall-start)
 
-.PHONY: firewall-ensure
-firewall-ensure: firewall-install | ssh-check
+.PHONY: firewall-base-running
+firewall-base-running: | ssh-check
 	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
-		iptables -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || \
-		/jffs/scripts/firewall-start \
+		iptables -L INPUT >/dev/null 2>&1 || \
+		{ echo "❌ Base firewall not running"; exit 1; } \
+	'
+
+#  asserts observed enforcement, not configuration
+.PHONY: firewall-skynet-running
+firewall-skynet-running: firewall-install firewall-base-running | ssh-check
+	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
+		(dmesg || logread) | grep -q "\[BLOCKED - INBOUND\]" || \
+		{ echo "❌ Skynet not enforcing"; exit 1; } \
 	'
 
 .PHONY: firewall-started
-firewall-started: firewall-ensure
+firewall-started: firewall-base-running
+
+
+.PHONY: firewall-hardened
+firewall-hardened: firewall-started firewall-skynet-running
+	@echo "🛡️ Firewall hardened and actively blocking threats	"
 
 .PHONY: firewall
-firewall: firewall-ensure
+firewall: firewall-skynet-running
 
 .PHONY: bootstrap
 bootstrap: install-run-as-root install-ddns dnsmasq-cache firewall-install

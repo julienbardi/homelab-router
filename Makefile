@@ -1,6 +1,4 @@
-# Makefile
-# Canonical entrypoint wrapper
-# This file exists ONLY to forward to the real graph.
+# Defines user-facing targets and includes the real dependency graph.
 
 .DEFAULT_GOAL := help
 

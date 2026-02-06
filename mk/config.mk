@@ -16,8 +16,11 @@
 #   - MUST be included before any other module
 # ------------------------------------------------------------
 
-ROUTER_HOST      := julie@10.89.12.1
+ROUTER_ADDR := 10.89.12.1
+ROUTER_USER := julie
+ROUTER_HOST := $(ROUTER_USER)@$(ROUTER_ADDR)
 ROUTER_SSH_PORT  := 2222
+
 ROUTER_SCRIPTS   := /jffs/scripts
 REPO_ROOT        := $(MAKEFILE_DIR)
 
@@ -41,3 +44,9 @@ CHECKMAKE     := $(TOOLS_DIR)/checkmake
 
 RUN_AS_ROOT := /jffs/scripts/run-as-root.sh
 run_as_root := ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) $(RUN_AS_ROOT)
+
+# Installed helpers
+CERTS_CREATE := /jffs/scripts/certs-create.sh
+CERTS_DEPLOY := /jffs/scripts/certs-deploy.sh
+GEN_CLIENT_CERT    := /jffs/scripts/generate-client-cert.sh
+GEN_CLIENT_WRAPPER := /jffs/scripts/gen-client-cert-wrapper.sh
