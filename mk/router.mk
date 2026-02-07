@@ -94,7 +94,7 @@ require-run-as-root: | ssh-check
 		( \
 			echo "❌ run-as-root missing"; \
 			echo "ℹ️  Router helpers not installed (likely after reset)"; \
-			echo "➡️  Recovery: make router-bootstrap"; \
+			echo "➡️  Recovery: make bootstrap"; \
 			exit 1; \
 		) \
 	'
@@ -200,7 +200,7 @@ router-health: ssh-check
 			echo "   ✓ config valid"; \
 		echo "✅ Router healthy" \
 	'
-	
+
 .PHONY: router-health-strict
 router-health-strict: router-health | ssh-check
 	@echo "🔒 Enforcing strict security invariants"
