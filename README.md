@@ -45,7 +45,7 @@ This project turns the router into a reproducible, script‑driven control‑pla
 ### 1. Clone the repo
 
 ```sh
-git clone git#github.com:julienbardi/homelab-router.git
+git clone git@github.com:julienbardi/homelab-router.git
 cd homelab-router
 ```
 
