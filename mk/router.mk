@@ -91,7 +91,12 @@ ssh-check:
 require-run-as-root: | ssh-check
 	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
 		test -x "$(RUN_AS_ROOT)" || \
-		( echo "❌ run-as-root missing"; exit 1 ) \
+		( \
+			echo "❌ run-as-root missing"; \
+			echo "ℹ️  Router helpers not installed (likely after reset)"; \
+			echo "➡️  Recovery: make router-bootstrap"; \
+			exit 1; \
+		) \
 	'
 
 .PHONY: install-run-as-root
