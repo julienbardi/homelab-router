@@ -1,0 +1,25 @@
+{
+    // Use literal tabs everywhere
+    "editor.insertSpaces": false,
+
+    // Display width: 1 tab = 4 spaces
+    "editor.tabSize": 4,
+
+    // Makefile safety: VS Code must NOT auto‑convert tabs
+    "[makefile]": {
+        "editor.insertSpaces": false,
+        "editor.tabSize": 4
+    },
+
+    // Also apply to your mk/*.mk files
+    "[make]": {
+        "editor.insertSpaces": false,
+        "editor.tabSize": 4
+    },
+
+    // Optional: highlight accidental leading spaces in Makefiles
+    "editor.renderWhitespace": "boundary",
+
+    // Optional: trim trailing whitespace everywhere except Makefiles
+    "files.trimTrailingWhitespace": true
+}
