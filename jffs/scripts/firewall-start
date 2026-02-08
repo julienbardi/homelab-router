@@ -48,6 +48,29 @@ if ! iptables -C FORWARD -p udp -s "$NAS4" --sport 51420:51435 \
 fi
 
 #
+# Router-terminated WireGuard forwarding (wgs1) — strict idempotency
+#
+
+# Ensure chain exists
+iptables -N WGSF 2>/dev/null || true
+
+# Ensure chain rules exist (no flush, no duplicates)
+if ! iptables -C WGSF -o br0 -j ACCEPT 2>/dev/null; then
+	iptables -A WGSF -o br0 -j ACCEPT
+fi
+
+if ! iptables -C WGSF -i br0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null; then
+	iptables -A WGSF -i br0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+fi
+
+# Ensure the jump is evaluated first (delete any existing copies, then insert at top)
+while iptables -C FORWARD -i wgs1 -j WGSF 2>/dev/null; do
+	iptables -D FORWARD -i wgs1 -j WGSF
+done
+iptables -I FORWARD 1 -i wgs1 -j WGSF
+
+
+#
 # IPv4 firewall invariant:
 # Allow WireGuard clients to access LAN (bidirectional)
 #
@@ -67,20 +90,6 @@ while [ "$n" -le "$WG_IF_MAX" ]; do
 
 		n=$((n + 1))
 done
-
-#
-# IPv4 firewall invariant:
-# Allow router-terminated WireGuard (wgs1) to access LAN (bidirectional)
-#
-if ! iptables -C FORWARD -i wgs1 -o br0 -j ACCEPT 2>/dev/null; then
-	iptables -I FORWARD -i wgs1 -o br0 -j ACCEPT
-fi
-
-if ! iptables -C FORWARD -i br0 -o wgs1 \
-	-m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null; then
-	iptables -I FORWARD -i br0 -o wgs1 \
-		-m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-fi
 
 #
 # IPv4 firewall invariant (INPUT):
