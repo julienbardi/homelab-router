@@ -69,6 +69,20 @@ while [ "$n" -le "$WG_IF_MAX" ]; do
 done
 
 #
+# IPv4 firewall invariant:
+# Allow router-terminated WireGuard (wgs1) to access LAN (bidirectional)
+#
+if ! iptables -C FORWARD -i wgs1 -o br0 -j ACCEPT 2>/dev/null; then
+	iptables -I FORWARD -i wgs1 -o br0 -j ACCEPT
+fi
+
+if ! iptables -C FORWARD -i br0 -o wgs1 \
+	-m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null; then
+	iptables -I FORWARD -i br0 -o wgs1 \
+		-m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+fi
+
+#
 # IPv4 firewall invariant (INPUT):
 # Allow inbound HTTPS to router itself (Caddy on :443)
 #
