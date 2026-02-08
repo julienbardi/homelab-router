@@ -150,7 +150,7 @@ firewall-started: firewall-base-running
 
 
 .PHONY: firewall-hardened
-firewall-hardened: firewall-started firewall-skynet-running
+firewall-hardened: firewall-started firewall-skynet-running firewall-ipv6-forwarding
 	@echo "🛡️ Firewall hardened and actively blocking threats	"
 
 .PHONY: firewall
@@ -247,3 +247,16 @@ firewall-audit: | ssh-check
 		wg show \
 	'
 
+.PHONY: firewall-ipv6-forwarding
+firewall-ipv6-forwarding: | ssh-check
+	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
+		set -e; \
+		echo "→ IPv6 forwarding:"; \
+		ip6tables -S FORWARD | head -n1 | grep -qx -- "-P FORWARD DROP" || \
+			{ echo "   ❌ IPv6 FORWARD policy not DROP"; exit 1; }; \
+		ip6tables -S FORWARD | grep -q -- "-j WGSF" || \
+			{ echo "   ❌ WireGuard IPv6 forward chain missing"; exit 1; }; \
+		ip6tables -S FORWARD | tail -n1 | grep -qx -- "-A FORWARD -j DROP" || \
+			{ echo "   ❌ IPv6 FORWARD chain missing terminal DROP"; exit 1; }; \
+		echo "   ✓ IPv6 forwarding enforced" \
+	'
