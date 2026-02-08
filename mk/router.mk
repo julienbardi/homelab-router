@@ -244,8 +244,6 @@ firewall-audit: | ssh-check
 		iptables  -S FORWARD; \
 		ip6tables -S INPUT; \
 		ip6tables -S FORWARD; \
-		sysctl net.ipv4.ip_forward; \
-		sysctl net.ipv6.conf.all.forwarding; \
 		wg show \
 	'
 
