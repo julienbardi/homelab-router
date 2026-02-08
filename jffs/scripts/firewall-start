@@ -170,6 +170,12 @@ while [ "$n" -le "$WG_IF_MAX" ]; do
 done
 
 #
+# Dual-WireGuard routing invariant:
+# Ensure router-terminated WireGuard subnet is locally routable
+#
+ip route replace 10.89.13.0/24 dev wgs1 || true
+
+#
 # Optional service restart:
 # Tailscale is best-effort and must not affect routing correctness
 #
