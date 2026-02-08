@@ -235,3 +235,17 @@ router-health-strict: router-health | ssh-check
 		echo " ✓ SSH key authentication works"; \
 		echo "✅ Strict security posture verified" \
 	'
+
+.PHONY: firewall-audit
+firewall-audit: | ssh-check
+	@echo "🔍 Router firewall audit"
+	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
+		iptables  -S INPUT; \
+		iptables  -S FORWARD; \
+		ip6tables -S INPUT; \
+		ip6tables -S FORWARD; \
+		sysctl net.ipv4.ip_forward; \
+		sysctl net.ipv6.conf.all.forwarding; \
+		wg show \
+	'
+
