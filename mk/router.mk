@@ -141,9 +141,19 @@ firewall-base-running: | ssh-check
 .PHONY: firewall-skynet-running
 firewall-skynet-running: firewall-install firewall-base-running | ssh-check
 	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
-		(dmesg || logread) | grep -q "\[BLOCKED - INBOUND\]" || \
-		{ echo "❌ Skynet not enforcing"; exit 1; } \
+		set -e; \
+		echo "→ Skynet firewall:"; \
+		iptables -L SDN_FI >/dev/null 2>&1 || \
+			{ echo "   ❌ Skynet INPUT chain missing"; exit 1; }; \
+		iptables -L SDN_FF >/dev/null 2>&1 || \
+			{ echo "   ❌ Skynet FORWARD chain missing"; exit 1; }; \
+		iptables -L INPUT -n | grep -q "SDN_FI" || \
+			{ echo "   ❌ Skynet INPUT chain not referenced"; exit 1; }; \
+		iptables -L FORWARD -n | grep -q "SDN_FF" || \
+			{ echo "   ❌ Skynet FORWARD chain not referenced"; exit 1; }; \
+		echo "   ✓ Skynet chains present and active" \
 	'
+
 
 .PHONY: firewall-started
 firewall-started: firewall-base-running
@@ -151,7 +161,7 @@ firewall-started: firewall-base-running
 
 .PHONY: firewall-hardened
 firewall-hardened: firewall-started firewall-skynet-running firewall-ipv6-forwarding
-	@echo "🛡️ Firewall hardened and actively blocking threats	"
+	@echo "🛡️ Firewall hardened and actively blocking threats"
 
 .PHONY: firewall
 firewall: firewall-skynet-running
