@@ -48,7 +48,7 @@ if ! iptables -C FORWARD -p udp -s "$NAS4" --sport 51420:51435 \
 fi
 
 #
-# Router-terminated WireGuard forwarding (wgs1) — strict idempotency
+# Router-terminated WireGuard forwarding (wgs1) — strict convergence
 #
 
 # Ensure chain exists
@@ -63,12 +63,20 @@ if ! iptables -C WGSF -i br0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEP
 	iptables -A WGSF -i br0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 fi
 
-# Ensure the jump is evaluated first (delete any existing copies, then insert at top)
+# Remove legacy direct FORWARD rules from older versions (must not exist anymore)
+while iptables -C FORWARD -i wgs1 -o br0 -j ACCEPT 2>/dev/null; do
+	iptables -D FORWARD -i wgs1 -o br0 -j ACCEPT
+done
+
+while iptables -C FORWARD -i br0 -o wgs1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null; do
+	iptables -D FORWARD -i br0 -o wgs1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+done
+
+# Ensure exactly one jump, and ensure it is rule #1
 while iptables -C FORWARD -i wgs1 -j WGSF 2>/dev/null; do
 	iptables -D FORWARD -i wgs1 -j WGSF
 done
 iptables -I FORWARD 1 -i wgs1 -j WGSF
-
 
 #
 # IPv4 firewall invariant:
