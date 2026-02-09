@@ -1,0 +1,63 @@
+# =============================================================================
+# WireGuard Control Plane — Domain Definition
+#
+# This file defines the domain of valid configurations.
+# It contains no enumeration and no derived state.
+#
+# It is canonical intent and MUST be backed up.
+# =============================================================================
+
+nodes:
+  - julie-s22
+  - julie-acer
+  - julie-omen30l
+
+interfaces:
+  wg1:
+    description: "NAS WireGuard instance 1"
+  wg2:
+    description: "NAS WireGuard instance 2"
+  wg3:
+    description: "NAS WireGuard instance 3"
+  wg4:
+    description: "NAS WireGuard instance 4"
+  wg5:
+    description: "NAS WireGuard instance 5"
+  wg6:
+    description: "NAS WireGuard instance 6"
+  wg7:
+    description: "NAS WireGuard instance 7"
+  wg8:
+    description: "NAS WireGuard instance 8"
+  wg9:
+    description: "NAS WireGuard instance 9"
+  wg10:
+    description: "NAS WireGuard instance 10"
+  wg11:
+    description: "NAS WireGuard instance 11"
+  wg12:
+    description: "NAS WireGuard instance 12"
+  wg13:
+    description: "NAS WireGuard instance 13"
+  wg14:
+    description: "NAS WireGuard instance 14"
+  wg15:
+    description: "NAS WireGuard instance 15"
+  wgs:
+    description: "Router WireGuard instance"
+
+profiles:
+  lan:
+    description: "LAN access only"
+  inet-v4:
+    description: "IPv4 internet access"
+  inet-v6:
+    description: "IPv6 internet access"
+  full:
+    description: "Full tunnel (LAN + IPv4 + IPv6)"
+
+constraints:
+  # Example constraints — adjust as needed
+  - iface: wgs
+    disallow_profiles:
+      - inet-v6
