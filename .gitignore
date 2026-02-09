@@ -20,3 +20,8 @@ caddy/data/
 # Folder for local tools (e.g. checkmake)
 .tools/
 /bin/caddy
+
+# Generated WireGuard control-plane dumps
+plan.tsv
+alloc.tsv
+keys.tsv
