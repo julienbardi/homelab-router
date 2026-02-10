@@ -85,7 +85,7 @@ Nodes represent logical VPN clients.
 
 ```yaml
 interfaces:
-  wg0:
+  wgs1:
     server: router
     endpoint:
       host: vpn.example.invalid
@@ -125,7 +125,7 @@ Profiles do not encode routes, CIDRs, or OS behavior.
 
 ```yaml
 constraints:
-  - iface: wg0
+  - iface: wgs1
     allow_profiles:
       - profile-split
 ```

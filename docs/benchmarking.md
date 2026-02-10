@@ -26,7 +26,7 @@ Benchmarking must not affect production VPN behavior.
 
 Benchmarking is performed using multiple WireGuard servers:
 
-- wg0 on the router (production reference)
+- wgs1 on the router (production reference)
 - wg1…wg15 on the NAS (benchmark targets)
 
 Each interface is independent and isolated.

@@ -67,7 +67,7 @@ by DNS.
 A WireGuard server instance.
 
 Examples:
-- wg0
+- wgs1
 - wg1
 
 An interface defines:

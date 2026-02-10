@@ -66,9 +66,9 @@ The NAS never routes production traffic.
 
 ---
 
-# Why is wg0 special?
+# Why is wgs1 special?
 
-wg0 is reserved for the production WireGuard interface on the router.
+wgs1 is reserved for the production WireGuard interface on the router.
 
 All other interfaces (wg1…wg15) are non‑production and may be destroyed or
 recreated freely.

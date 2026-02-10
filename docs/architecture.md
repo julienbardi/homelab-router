@@ -122,7 +122,7 @@ The NAS is authoritative for intent but does not route production traffic.
 
 Multiple WireGuard servers exist simultaneously:
 
-- wg0 on the router
+- wgs1 on the router
 - wg1…wg15 on the NAS
 
 This enables:

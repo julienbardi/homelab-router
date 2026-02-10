@@ -12,8 +12,8 @@ Violating these conventions is considered a bug.
 
 # Naming Conventions
 
-- WireGuard interfaces are named wg0, wg1, wg2, …
-- wg0 is reserved for the production router interface
+- WireGuard interfaces are named wgs1, wg1, wg2, …
+- wgs1 is reserved for the production router interface
 - wg1…wg15 are reserved for NAS‑hosted benchmark interfaces
 - Server identifiers are lowercase and stable (router, nas)
 - Profile names describe intent, not mechanics (profile-split, profile-full)

@@ -29,8 +29,8 @@ nodes:
   - example-node-phone
 
 interfaces:
-  # WireGuard server on the router
-  wg0:
+  # Router-hosted WireGuard server
+  wgs1:
     server: router
 
     endpoint:
@@ -48,7 +48,7 @@ interfaces:
     internet: true
     ipv6: true
 
-  # WireGuard server on the NAS (benchmark target)
+  # NAS-hosted WireGuard server (benchmark / alternate endpoint)
   wg1:
     server: nas
 
@@ -75,7 +75,7 @@ profiles:
     internet: true
 
 constraints:
-  - iface: wg0
+  - iface: wgs1
     allow_profiles:
       - profile-split
       - profile-full
