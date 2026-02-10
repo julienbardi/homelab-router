@@ -17,6 +17,12 @@
         "editor.tabSize": 4
     },
 
+    "[shellscript]": {
+    "editor.insertSpaces": false,
+    "editor.tabSize": 4,
+    "editor.detectIndentation": false
+    },
+
     // Optional: highlight accidental leading spaces in Makefiles
     "editor.renderWhitespace": "boundary",
 

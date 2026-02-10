@@ -1,0 +1,85 @@
+# domain.example.yaml
+# -----------------------------------------------------------------------------
+# Example WireGuard domain definition
+#
+# This file documents the expected schema and semantics only.
+# It is NOT used by the system.
+#
+# The real domain.yaml is private and must exist on the router via NAS mount:
+#   /volume1/homelab/wireguard/domain.yaml
+#
+# All addresses below are synthetic and non-routable.
+# Do NOT copy this file into production.
+# -----------------------------------------------------------------------------
+
+servers:
+  # Machines that can host WireGuard interfaces
+  router:
+    mgmt_ip:
+      ipv4: 192.0.2.1
+      ipv6: 2001:db8:1::1
+
+  nas:
+    mgmt_ip:
+      ipv4: 192.0.2.10
+      ipv6: 2001:db8:1::10
+
+nodes:
+  - example-node-laptop
+  - example-node-phone
+
+interfaces:
+  # WireGuard server on the router
+  wg0:
+    server: router
+
+    endpoint:
+      host: vpn-router.example.invalid
+      port: 51820
+
+    lan_subnets:
+      - 192.0.2.0/24
+      - 2001:db8:100::/64
+
+    vpn_subnet:
+      ipv4: 198.51.100.0/24
+      ipv6: 2001:db8:200::/64
+
+    internet: true
+    ipv6: true
+
+  # WireGuard server on the NAS (benchmark target)
+  wg1:
+    server: nas
+
+    endpoint:
+      host: vpn-nas.example.invalid
+      port: 51821
+
+    lan_subnets:
+      - 192.0.2.0/24
+
+    vpn_subnet:
+      ipv4: 203.0.113.0/24
+
+    internet: false
+    ipv6: false
+
+profiles:
+  profile-split:
+    lan: true
+    internet: false
+
+  profile-full:
+    lan: true
+    internet: true
+
+constraints:
+  - iface: wg0
+    allow_profiles:
+      - profile-split
+      - profile-full
+
+  - iface: wg1
+    allow_profiles:
+      - profile-split

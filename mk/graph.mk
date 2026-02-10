@@ -17,6 +17,7 @@
 
 include mk/config.mk
 include mk/router.mk
+include mk/wireguard.mk
 include mk/certs.mk
 include mk/caddy.mk
 include mk/tools.mk
