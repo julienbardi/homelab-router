@@ -6,7 +6,7 @@ set -eu
 
 IN_ALLOC="alloc.tsv"
 OUT_KEYS="keys.tsv"
-KEY_ROOT="/volume1/homelab/wireguard/keys"
+KEY_ROOT="/jffs/scripts/wireguard/keys"
 
 : "${WG_DUMP:=0}"
 

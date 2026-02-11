@@ -20,6 +20,11 @@ NAS6="fd89:7a3b:42c0::4"
 WG_V4_PREFIXLEN="16"
 WG_IF_MIN="1"
 WG_IF_MAX="15"
+# WireGuard profile bitmask model (wg1..wg15)
+BIT_LAN=0
+BIT_V4=1
+BIT_V6=2
+BIT_FULL=3
 
 #
 # IPv4 NAT invariant (DNAT):
@@ -119,6 +124,67 @@ if command -v ip6tables >/dev/null 2>&1; then
 				ip6tables -I INPUT -i eth0 -p tcp --dport 443 \
 						-m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
 		fi
+fi
+
+#
+# IPv6 WireGuard forwarding invariant (FORWARD):
+# Enforce per-wg interface intent using the same bitmask model as the generator.
+#
+# Model:
+#   - Default FORWARD policy remains DROP (checked elsewhere)
+#   - Only explicit wgN forwarding is allowed
+#   - LAN access requires BIT_LAN + BIT_V6
+#   - IPv6 internet egress requires BIT_FULL + BIT_V6
+#
+if command -v ip6tables >/dev/null 2>&1; then
+	# Ensure chain exists and is clean (local flush only)
+	ip6tables -N WGSF6 2>/dev/null || true
+	ip6tables -F WGSF6
+
+	# Ensure scoped jumps exist (WireGuard only), no global FORWARD hijack
+	while ip6tables -C FORWARD -j WGSF6 2>/dev/null; do
+		ip6tables -D FORWARD -j WGSF6
+	done
+	while ip6tables -C FORWARD -i wg+ -j WGSF6 2>/dev/null; do
+		ip6tables -D FORWARD -i wg+ -j WGSF6
+	done
+	while ip6tables -C FORWARD -o wg+ -j WGSF6 2>/dev/null; do
+		ip6tables -D FORWARD -o wg+ -j WGSF6
+	done
+
+	ip6tables -I FORWARD 1 -i wg+ -j WGSF6
+	ip6tables -I FORWARD 2 -o wg+ -j WGSF6
+
+	# Always allow return traffic (stateful)
+	ip6tables -A WGSF6 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+	n="$WG_IF_MIN"
+	while [ "$n" -le "$WG_IF_MAX" ]; do
+		WG_IF="wg${n}"
+
+		has_lan=$(( (n >> BIT_LAN) & 1 ))
+		has_v6=$(( (n >> BIT_V6) & 1 ))
+		is_full=$(( (n >> BIT_FULL) & 1 ))
+
+		# Only enforce IPv6 rules for profiles that actually carry IPv6
+		if [ "$has_v6" -eq 1 ]; then
+			# wgN <-> LAN (br0) only when LAN bit is set
+			if [ "$has_lan" -eq 1 ]; then
+				ip6tables -A WGSF6 -i "$WG_IF" -o br0 -j ACCEPT
+				ip6tables -A WGSF6 -i br0 -o "$WG_IF" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+			fi
+
+			# wgN -> WAN (eth0) only when FULL bit is set
+			if [ "$is_full" -eq 1 ]; then
+				ip6tables -A WGSF6 -i "$WG_IF" -o eth0 -j ACCEPT
+			fi
+		fi
+
+		n=$((n + 1))
+	done
+
+	# Explicit terminal drop—no fallthrough surprises
+	ip6tables -A WGSF6 -j DROP
 fi
 
 #

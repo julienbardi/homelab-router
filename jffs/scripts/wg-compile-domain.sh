@@ -4,7 +4,7 @@ set -eu
 # Implements the contracts defined in contracts.inc.
 # Any deviation is a bug.
 
-DOMAIN_FILE="/volume1/homelab/wireguard/domain.yaml"
+DOMAIN_FILE="/jffs/scripts/wireguard/domain.yaml"
 OUT_PLAN="plan.tsv"
 
 : "${WG_DUMP:=0}"

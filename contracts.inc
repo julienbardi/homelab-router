@@ -16,7 +16,7 @@ these contracts.
 CONTRACT: Canonical storage & disaster recovery
 -------------------------------------------------------------------------------
 
-All canonical intent MUST reside on persistent NAS storage (/volume1).
+All canonical intent MUST reside on persistent router storage under /jffs/scripts/.
 
 Canonical files:
   - domain.yaml      (domain definitions only)

@@ -6,7 +6,7 @@
 # It is NOT used by the system.
 #
 # The real domain.yaml is private and must exist on the router via NAS mount:
-#   /volume1/homelab/wireguard/domain.yaml
+#   /jffs/scripts/wireguard/domain.yaml
 #
 # All addresses below are synthetic and non-routable.
 # Do NOT copy this file into production.

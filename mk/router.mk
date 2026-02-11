@@ -24,7 +24,8 @@
 	install-run-as-root \
 	install-ddns \
 	install-caddy \
-	install-certs
+	install-certs \
+	install-ipv6-ula
 
 define deploy_if_changed
 	@set -e; \
@@ -154,10 +155,8 @@ firewall-skynet-running: firewall-install firewall-base-running | ssh-check
 		echo "   ✓ Skynet chains present and active" \
 	'
 
-
 .PHONY: firewall-started
 firewall-started: firewall-base-running
-
 
 .PHONY: firewall-hardened
 firewall-hardened: firewall-started firewall-skynet-running firewall-ipv6-forwarding
@@ -169,6 +168,14 @@ firewall: firewall-skynet-running
 .PHONY: bootstrap
 bootstrap: install-run-as-root install-ddns dnsmasq-cache firewall-install
 	@echo "✅ Bootstrap complete"
+
+.PHONY: install-ipv6-ula
+install-ipv6-ula: | ssh-check
+	$(call deploy_if_changed,$(SRC_SCRIPTS)/provision-ipv6-ula.sh,/jffs/scripts/provision-ipv6-ula.sh)
+
+.PHONY: ensure-ipv6-ula
+ensure-ipv6-ula: install-ipv6-ula
+	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '/jffs/scripts/provision-ipv6-ula.sh'
 
 .PHONY: router-health
 router-health: ssh-check
@@ -208,6 +215,15 @@ router-health: ssh-check
 			echo "   ✓ binary present"; \
 			echo "   ✓ process running"; \
 			echo "   ✓ config valid"; \
+			echo "→ IPv6 FORWARD hook scope:"; \
+			if ip6tables -S FORWARD | grep -q -- "-j WGSF6"; then \
+				echo "   ❌ WGSF6 is globally hooked into FORWARD"; exit 1 \
+			fi; \
+			ip6tables -S FORWARD | grep -q -- "^-A FORWARD -i wg\+ -j WGSF6" || \
+				{ echo "   ❌ missing FORWARD -i wg+ -> WGSF6"; exit 1; }; \
+			ip6tables -S FORWARD | grep -q -- "^-A FORWARD -o wg\+ -j WGSF6" || \
+				{ echo "   ❌ missing FORWARD -o wg+ -> WGSF6"; exit 1; }; \
+			echo "   ✓ WGSF6 scoped to WireGuard only"; \
 		echo "✅ Router healthy" \
 	'
 
@@ -243,6 +259,10 @@ router-health-strict: router-health | ssh-check
 		echo "   ✓ Web UI not exposed on WAN"; \
 		echo "→ SSH keys:"; \
 		echo " ✓ SSH key authentication works"; \
+		echo "→ IPv6 ULA:"; \
+		nvram get ipv6_ula_enable | grep -qx 1 || { echo "   ❌ ULA disabled"; exit 1; }; \
+		nvram get ipv6_ula_prefix | grep -qx 'fd89:7a3b:42c0::/48' || { echo "   ❌ ULA prefix mismatch"; exit 1; }; \
+		echo "   ✓ ULA configured"; \
 		echo "✅ Strict security posture verified" \
 	'
 
