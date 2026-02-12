@@ -189,10 +189,10 @@ router-health: ssh-check
 		echo "→ Storage:"; \
 			df -h /jffs /tmp/mnt/sda || true; \
 		echo "→ Firewall:"; \
-			if iptables -L INPUT -n | grep -qE "ACCEPT.*tcp.*dpt:443"; then \
-				echo "   ✓ HTTPS ingress allowed"; \
+			if ( iptables -S | grep -qE -- "-A .* -p tcp .*--dport 443 .* -j ACCEPT" ); then \
+				echo " ✓ HTTPS ingress allowed"; \
 			else \
-				echo "   ❌ HTTPS ingress missing"; exit 1; \
+				echo " ❌ WAN HTTPS intentionally blocked"; exit 1; \
 			fi; \
 		echo "→ WireGuard:"; \
 			if iptables -L WGSI >/dev/null 2>&1; then \
@@ -217,7 +217,7 @@ router-health: ssh-check
 			echo "   ✓ config valid"; \
 			echo "→ IPv6 FORWARD hook scope:"; \
 			if ip6tables -S FORWARD | grep -q -- "-j WGSF6"; then \
-				echo "   ❌ WGSF6 is globally hooked into FORWARD"; exit 1 \
+				echo "   ❌ WGSF6 is globally hooked into FORWARD"; exit 1; \
 			fi; \
 			ip6tables -S FORWARD | grep -q -- "^-A FORWARD -i wg\+ -j WGSF6" || \
 				{ echo "   ❌ missing FORWARD -i wg+ -> WGSF6"; exit 1; }; \
@@ -281,12 +281,18 @@ firewall-audit: | ssh-check
 firewall-ipv6-forwarding: | ssh-check
 	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
 		set -e; \
-		echo "→ IPv6 forwarding:"; \
-		ip6tables -S FORWARD | head -n1 | grep -qx -- "-P FORWARD DROP" || \
-			{ echo "   ❌ IPv6 FORWARD policy not DROP"; exit 1; }; \
-		ip6tables -S FORWARD | grep -q -- "-j WGSF" || \
-			{ echo "   ❌ WireGuard IPv6 forward chain missing"; exit 1; }; \
-		ip6tables -S FORWARD | tail -n1 | grep -qx -- "-A FORWARD -j DROP" || \
-			{ echo "   ❌ IPv6 FORWARD chain missing terminal DROP"; exit 1; }; \
-		echo "   ✓ IPv6 forwarding enforced" \
+		echo "→ IPv6 forwarding (WireGuard scope):"; \
+		ip6tables -S WGSF6 >/dev/null 2>&1 || \
+			{ echo "   ❌ WGSF6 chain missing"; exit 1; }; \
+		ip6tables -S FORWARD | grep -q -- "^-A FORWARD -i wg\\+ -j WGSF6" || \
+			{ echo "   ❌ missing FORWARD -i wg+ → WGSF6"; exit 1; }; \
+		ip6tables -S FORWARD | grep -q -- "^-A FORWARD -o wg\\+ -j WGSF6" || \
+			{ echo "   ❌ missing FORWARD -o wg+ → WGSF6"; exit 1; }; \
+		if ip6tables -S FORWARD | grep -q -- "^-A FORWARD -j WGSF6"; then \
+			echo "   ❌ WGSF6 is globally hooked into FORWARD"; exit 1; \
+		fi; \
+		ip6tables -S WGSF6 | tail -n1 | grep -qx -- "-A WGSF6 -j DROP" || \
+			{ echo "   ❌ WGSF6 missing terminal DROP"; exit 1; }; \
+		echo "   ✓ IPv6 forwarding enforced (WireGuard-only)" \
 	'
+

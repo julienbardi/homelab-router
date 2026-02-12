@@ -51,6 +51,24 @@ bardi.ch:8384 {
 	}
 
 	# --------------------------------------------------------
+	# dev.bardi.ch (LAN + WireGuard + Tailscale only)
+	# --------------------------------------------------------
+	@dev_allowed {
+		host dev.bardi.ch
+		remote_ip 10.89.12.0/24
+		remote_ip fd89:7a3b:42c0::/64
+		remote_ip 100.64.0.0/10
+		remote_ip fd7a:115c:a1e0::/48
+		# TODO: add your WireGuard client subnets here
+	}
+	reverse_proxy @dev_allowed 10.89.12.4:443
+
+	@dev_denied {
+		host dev.bardi.ch
+	}
+	respond @dev_denied "Forbidden" 403
+
+	# --------------------------------------------------------
 	# DiskStation main HTTPS site (WAN)
 	# --------------------------------------------------------
 	@bardi {
@@ -98,7 +116,6 @@ bardi.ch:8384 {
  dns.bardi.ch \
  vpn.bardi.ch \
  derp.bardi.ch \
- dev.bardi.ch \
  apt.bardi.ch \
  nas.bardi.ch
 	}
