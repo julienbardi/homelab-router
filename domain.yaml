@@ -38,38 +38,84 @@ interfaces:
     internet: true
     ipv6: true
 
-  # NAS-hosted WireGuard server (benchmark / alternate endpoint)
-  wg1:
+  # NAS-hosted WireGuard servers (valid bitmask slots only)
+
+  wg2:
     server: nas
-
-    endpoint:
-      host: vpn.bardi.ch
-      port: 51421
-
-    lan_subnets:
-      - 10.89.12.0/24
-
+    endpoint: { host: vpn.bardi.ch, port: 51422 }
     vpn_subnet:
-      ipv4: 10.89.1.0/24
-
+      ipv4: 10.2.0.0/16
     internet: false
     ipv6: false
 
-profiles:
-  profile-split:
-    lan: true
+  wg3:
+    server: nas
+    endpoint: { host: vpn.bardi.ch, port: 51423 }
+    lan_subnets:
+      - 10.89.12.0/24
+    vpn_subnet:
+      ipv4: 10.3.0.0/16
     internet: false
+    ipv6: false
 
-  profile-full:
-    lan: true
+  wg4:
+    server: nas
+    endpoint: { host: vpn.bardi.ch, port: 51424 }
+    lan_subnets:
+      - fd89:7a3b:42c0::/64
+    vpn_subnet:
+      ipv6: fd89:7a3b:42c0:4::/64
+    internet: false
+    ipv6: true
+
+  wg5:
+    server: nas
+    endpoint: { host: vpn.bardi.ch, port: 51425 }
+    lan_subnets:
+      - fd89:7a3b:42c0::/64
+    vpn_subnet:
+      ipv6: fd89:7a3b:42c0:5::/64
+    internet: false
+    ipv6: true
+
+  wg6:
+    server: nas
+    endpoint: { host: vpn.bardi.ch, port: 51426 }
+    vpn_subnet:
+      ipv4: 10.6.0.0/16
+      ipv6: fd89:7a3b:42c0:6::/64
+    internet: false
+    ipv6: true
+
+  wg7:
+    server: nas
+    endpoint: { host: vpn.bardi.ch, port: 51427 }
+    lan_subnets:
+      - 10.89.12.0/24
+      - fd89:7a3b:42c0::/64
+    vpn_subnet:
+      ipv4: 10.7.0.0/16
+      ipv6: fd89:7a3b:42c0:7::/64
+    internet: false
+    ipv6: true
+
+  wg14:
+    server: nas
+    endpoint: { host: vpn.bardi.ch, port: 51434 }
+    vpn_subnet:
+      ipv4: 10.14.0.0/16
+      ipv6: fd89:7a3b:42c0:14::/64
     internet: true
+    ipv6: true
 
-constraints:
-  - iface: wgs1
-    allow_profiles:
-      - profile-split
-      - profile-full
-
-  - iface: wg1
-    allow_profiles:
-      - profile-split
+  wg15:
+    server: nas
+    endpoint: { host: vpn.bardi.ch, port: 51435 }
+    lan_subnets:
+      - 10.89.12.0/24
+      - fd89:7a3b:42c0::/64
+    vpn_subnet:
+      ipv4: 10.15.0.0/16
+      ipv6: fd89:7a3b:42c0:15::/64
+    internet: true
+    ipv6: true
