@@ -48,6 +48,7 @@ AWK="busybox awk"
 SORT="busybox sort"
 UNIQ="busybox uniq"
 WC="busybox wc"
+SED="busybox sed"
 
 "$WG" --help >/dev/null 2>&1 || fatal "wg not available at $WG"
 busybox awk 'BEGIN{exit 0}' </dev/null || fatal "busybox awk not available"
