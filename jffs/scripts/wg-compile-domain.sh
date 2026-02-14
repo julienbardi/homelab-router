@@ -1,109 +1,175 @@
 #!/bin/sh
-set -eu
+set -eu; umask 077
 
 # Implements the contracts defined in contracts.inc.
 # Any deviation is a bug.
 
-DOMAIN_FILE="/jffs/scripts/wireguard/domain.yaml"
-OUT_PLAN="plan.tsv"
+# -----------------------------------------------------------------------------
+# Execution environment invariants
+# -----------------------------------------------------------------------------
+
+PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export PATH
+
+LC_ALL=C
+export LC_ALL
+
+: "${DOMAIN_FILE:=/jffs/scripts/wireguard/domain.tsv}"
+: "${OUT_PLAN:=plan.tsv}"
+
+PHASE="init"
 
 : "${WG_DUMP:=0}"
 
-# -----------------------------------------------------------------------------
-# Helpers
-# -----------------------------------------------------------------------------
+TAB="$(printf '\t')"
+NL="$(printf '\n')"
+CR="$(printf '\r')"
 
 fatal() {
-	echo "❌ $*" >&2
+	printf '❌ [%s] %s\n' "$PHASE" "$*" >&2
 	exit 1
 }
 
-require_cmd() {
-	command -v "$1" >/dev/null 2>&1 || fatal "Missing required command: $1"
+AWK="busybox awk"
+SORT="busybox sort"
+CAT="busybox cat"
+
+busybox awk 'BEGIN{exit 0}' </dev/null || fatal "busybox awk not available"
+busybox sort </dev/null >/dev/null 2>&1 || fatal "busybox sort not available"
+busybox cat </dev/null >/dev/null 2>&1 || fatal "busybox cat not available"
+
+
+if command -v mktemp >/dev/null 2>&1; then HAVE_MKTEMP=1; else HAVE_MKTEMP=0; fi
+if [ -n "${RANDOM+x}" ]; then HAVE_RANDOM=1; else HAVE_RANDOM=0; fi
+
+make_tmp() {
+	prefix=$1
+
+	if [ "$HAVE_MKTEMP" -eq 1 ]; then
+		mktemp "/tmp/${prefix}.XXXXXX" \
+			|| fatal "mktemp failed for $prefix"
+	elif [ "$HAVE_RANDOM" -eq 1 ]; then
+		printf '/tmp/%s.%s.%s\n' "$prefix" "$$" "$RANDOM"
+	else
+		printf '/tmp/%s.%s\n' "$prefix" "$$"
+	fi
 }
 
 check_tsv_field() {
 	case "$1" in
-		*"$'\t'"*|*"$'\n'"*|*"$'\r'"*|*"$'\0'"*)
+		*"$TAB"*|*"$NL"*|*"$CR"*)
 			fatal "Forbidden character in TSV field: [$1]"
 			;;
 	esac
 }
 
-emit_row() {
-	for field in "$@"; do
-		check_tsv_field "$field"
-	done
-	printf '%s\t' "$@" | sed 's/\t$//'
-	printf '\n'
+check_no_outer_space() {
+	case "$1" in
+		" "*) fatal "Leading space in field: [$1]" ;;
+		*" ") fatal "Trailing space in field: [$1]" ;;
+	esac
 }
 
-# -----------------------------------------------------------------------------
-# Preconditions
-# -----------------------------------------------------------------------------
+check_token() {
+	field_value=$1
+	field_name=$2
 
-[ -f "$DOMAIN_FILE" ] || fatal "domain.yaml not found: $DOMAIN_FILE"
+	case "$field_value" in
+		'') fatal "Empty $field_name field" ;;
+		*[!A-Za-z0-9_-]*)
+			fatal "Invalid characters in $field_name: [$field_value]"
+			;;
+	esac
 
-require_cmd yq
-require_cmd sort
-
-# -----------------------------------------------------------------------------
-# Parse domain.yaml
-# -----------------------------------------------------------------------------
-
-nodes="$(yq -r '.nodes[]' "$DOMAIN_FILE")"
-ifaces="$(yq -r '.interfaces | keys[]' "$DOMAIN_FILE")"
-profiles="$(yq -r '.profiles | keys[]' "$DOMAIN_FILE")"
-
-[ -n "$nodes" ] || fatal "No nodes defined"
-[ -n "$ifaces" ] || fatal "No interfaces defined"
-[ -n "$profiles" ] || fatal "No profiles defined"
-
-# Load constraints into a simple lookup table:
-# key = iface|profile → disallowed
-constraints="$(yq -r '
-  .constraints[]? |
-  .iface as $iface |
-  .disallow_profiles[] |
-  "\($iface)|\(.)"
-' "$DOMAIN_FILE" || true)"
-
-is_disallowed() {
-	key="$1|$2"
-	printf '%s\n' "$constraints" | grep -qx "$key"
+	# max 32 characters
+	[ "${#field_value}" -le 32 ] || fatal "$field_name too long (max 32): [$field_value]"
 }
 
-# -----------------------------------------------------------------------------
-# Enumerate domain
-# -----------------------------------------------------------------------------
+check_iface() {
+	value=$1
 
-tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
+	case "$value" in
+		'') fatal "Empty iface field" ;;
+		*[!A-Za-z0-9.-]*)
+			fatal "Invalid iface characters (allowed: A-Z a-z 0-9 . -): [$value]"
+			;;
+	esac
 
-for node in $nodes; do
-	for iface in $ifaces; do
-		for profile in $profiles; do
-			if is_disallowed "$iface" "$profile"; then
-				continue
-			fi
-			printf '%s\t%s\t%s\n' "$node" "$iface" "$profile" >>"$tmp"
-		done
-	done
-done
+	# max 15 chars (Linux IFNAMSIZ-1)
+	[ "${#value}" -le 15 ] || fatal "iface too long (max 15): [$value]"
+}
+
+[ -f "$DOMAIN_FILE" ] || fatal "domain.tsv not found: $DOMAIN_FILE"
 
 # -----------------------------------------------------------------------------
-# Emit plan.tsv (optional)
+# Header invariant
 # -----------------------------------------------------------------------------
+PHASE="header"
+IFS="$TAB" read -r h_base h_iface h_profile h_extra <"$DOMAIN_FILE" \
+	|| fatal "Failed to read domain.tsv header"
 
+[ "$h_base" = "base" ]        || fatal "Invalid header: expected 'base', got '$h_base'"
+[ "$h_iface" = "iface" ]      || fatal "Invalid header: expected 'iface', got '$h_iface'"
+[ "$h_profile" = "profile" ]  || fatal "Invalid header: expected 'profile', got '$h_profile'"
+[ -z "${h_extra:-}" ]         || fatal "Invalid header: too many fields"
+
+PHASE="validate"
+
+tmp="$(make_tmp wg-domain)"
+tmp_unsorted="$(make_tmp wg-domain.unsorted)"
+
+: >"$tmp" || fatal "Failed to create tmp file: $tmp"
+: >"$tmp_unsorted" || fatal "Failed to create tmp_unsorted file: $tmp_unsorted"
+
+cleanup() {
+	rm -f "$tmp" "$tmp_unsorted"
+}
+trap cleanup EXIT
+
+$AWK 'NR>1 { print }' "$DOMAIN_FILE" >"$tmp_unsorted" || fatal "Failed to read domain.tsv body"
+
+while IFS="$TAB" read -r base iface profile extra; do
+	[ -z "${extra:-}" ] || fatal "Too many fields in domain.tsv row"
+
+	check_tsv_field "$base"
+	check_tsv_field "$iface"
+	check_tsv_field "$profile"
+
+	check_no_outer_space "$base"
+	check_no_outer_space "$iface"
+	check_no_outer_space "$profile"
+
+	check_token "$base" "base"
+	check_iface "$iface"
+
+	case "$profile" in
+		lan|wan|lan+wan) ;;
+		*) fatal "Invalid profile value: [$profile]" ;;
+	esac
+
+	printf '%s\t%s\t%s\n' "$base" "$iface" "$profile"
+done <"$tmp_unsorted" | $SORT >"$tmp" || fatal "Failed to sort validated rows"
+
+# -----------------------------------------------------------------------------
+# Uniqueness invariant: (base, iface, profile) must be unique
+# -----------------------------------------------------------------------------
+PHASE="unique"
+prev_key=""
+while IFS="$TAB" read -r base iface profile; do
+	key="${base}${TAB}${iface}${TAB}${profile}"
+	if [ "$key" = "$prev_key" ]; then
+		fatal "Duplicate row for base='$base', iface='$iface', profile='$profile'"
+	fi
+	prev_key="$key"
+done <"$tmp"
+
+PHASE="emit"
 if [ "$WG_DUMP" -eq 1 ]; then
 	{
-		emit_row base iface profile
-		sort "$tmp" | while IFS="$(printf '\t')" read -r base iface profile; do
-			emit_row "$base" "$iface" "$profile"
-		done
+		printf 'base\tiface\tprofile\n'
+		$CAT "$tmp"
 	} >"$OUT_PLAN"
-
-	echo "✅ Generated $OUT_PLAN"
+	printf '✅ Generated %s\n' "$OUT_PLAN"
 else
-	echo "ℹ️  WG_DUMP=0 — plan.tsv not written"
+	printf 'ℹ️  WG_DUMP=0 — plan.tsv not written\n'
 fi

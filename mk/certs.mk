@@ -1,26 +1,40 @@
 # mk/certs.mk
 # ------------------------------------------------------------
-# CERTIFICATE LIFECYCLE MANAGEMENT
+# CERTIFICATE DEPLOYMENT AND VALIDATION
 # ------------------------------------------------------------
 #
+# Purpose:
+#   Consume, deploy, and validate certificates produced externally.
+#
 # Responsibilities:
-#   - Internal CA creation and rotation
-#   - Certificate deployment to router services
-#   - Validation and status inspection
-#   - Client certificate generation
+#   - Deploy certificates to router services
+#   - Reload dependent services
+#   - Validate certificate presence and expiry
 #
 # Non-responsibilities:
-#   - Certificate issuance via ACME (external concern)
-#   - Service configuration (handled by service modules)
+#   - Certificate authority operations
+#   - Certificate creation or rotation
+#   - ACME or renewal logic
+#
+# Authority:
+#   - Certificates are produced externally (e.g. NAS)
+#   - This module makes no assumptions about the issuer
 #
 # Safety:
-#   - Destructive operations require explicit confirmation
-#   - Issuer absence is guarded explicitly
+#   - Missing or invalid certificates MUST fail loudly
 #
 # Contracts:
 #   - MUST NOT assume presence of ACME tooling
 #   - MUST NOT invoke $(MAKE)
+#
+# External requirements:
+#   - CERTS_DEPLOY: executable certificate deployment command
+#     (defined in mk/config.mk)
 # ------------------------------------------------------------
+
+ifndef CERTS_DEPLOY
+$(error CERTS_DEPLOY is not defined. This module requires CERTS_DEPLOY to be set by the including Makefile to an executable command that deploys certificates on the router.)
+endif
 
 define deploy_with_status
 	@$(run_as_root) $(CERTS_DEPLOY) deploy $(1)
@@ -33,16 +47,13 @@ define validate_with_status
 	@$(run_as_root) $(CERTS_DEPLOY) validate $(1)
 endef
 
-.PHONY: certs-create
-certs-create: require-run-as-root
-	@$(run_as_root) $(CERTS_CREATE)
-
 .PHONY: certs-deploy
-certs-deploy: require-run-as-root certs-create
+certs-deploy: require-run-as-root
+	@$(run_as_root) test -x $(CERTS_DEPLOY)
 	@$(run_as_root) $(CERTS_DEPLOY)
 
 .PHONY: certs-ensure
-certs-ensure: certs-deploy
+certs-ensure: certs-deploy ## Ensure certificates are present and deployed
 
 .PHONY: certs-status
 certs-status:
@@ -51,12 +62,6 @@ certs-status:
 .PHONY: certs-expiry
 certs-expiry:
 	@$(run_as_root) openssl x509 -in /etc/ssl/certs/homelab_bardi_CA.pem -noout -enddate
-
-.PHONY: certs-rotate-dangerous
-certs-rotate-dangerous:
-	@read -p "Type YES to continue: " r && [ "$$r" = "YES" ]
-	@$(run_as_root) $(CERTS_CREATE) --force
-	@$(run_as_root) $(CERTS_DEPLOY)
 
 .PHONY: deploy-router
 deploy-router: router-prepare
@@ -69,3 +74,7 @@ validate-router:
 .PHONY: validate-caddy
 validate-caddy:
 	$(call validate_with_status,caddy)
+
+.PHONY: certs-prepare
+certs-prepare: require-run-as-root
+	@$(run_as_root) $(CERTS_DEPLOY) prepare

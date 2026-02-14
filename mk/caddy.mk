@@ -23,12 +23,14 @@
 require-arm64: | ssh-check
 	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) uname -m | grep -q aarch64
 
+.NOTPARALLEL: caddy-install caddy-config
+
 .PHONY: caddy-install
-caddy-install: | ssh-check
+caddy-install: | ssh-check require-arm64
 	$(call deploy_if_changed, $(SRC_SCRIPTS)/caddy, $(CADDY_BIN))
 
 .PHONY: caddy-config
-caddy-config: firewall-started
+caddy-config: firewall-started | require-arm64
 	@scp -q -O -P $(ROUTER_SSH_PORT) $(CADDYFILE_SRC) $(ROUTER_HOST):$(CADDYFILE_DST)
 	@$(run_as_root) $(CADDY_BIN) validate --config $(CADDYFILE_DST)
 	@$(run_as_root) /jffs/scripts/caddy-reload.sh

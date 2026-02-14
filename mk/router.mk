@@ -3,12 +3,21 @@
 # ROUTER CONTROL PLANE
 # ------------------------------------------------------------
 #
+# Purpose:
+#   Root assembly for the router control plane.
+#
+# Scope:
+#   - Orchestration only
+#   - No stateful behavior
+#
+# Ownership:
+#   - All stateful logic lives in submodules included below
+#   - This file must not grow beyond coordination primitives
+#
 # Responsibilities:
-#   - SSH preflight and connectivity validation
-#   - Privilege escalation guard (run-as-root)
-#   - Router bootstrap and helper installation
-#   - Firewall and dnsmasq convergence
-#   - Router diagnostics and invariants
+#   - Define control-plane root
+#   - Provide shared deployment macros
+#   - Assemble router submodules
 #
 # Concurrency:
 #   - Targets listed in .NOTPARALLEL MUST NOT run concurrently
@@ -17,31 +26,91 @@
 #   - MUST NOT invoke $(MAKE)
 #   - MUST be correct under 'make -j'
 #   - MUST NOT rely on timestamps for remote state
+#
 # ------------------------------------------------------------
-.NOTPARALLEL: \
-	firewall-install \
-	dnsmasq-cache \
-	install-run-as-root \
-	install-ddns \
-	install-caddy \
-	install-certs \
-	install-ipv6-ula
 
+# ------------------------------------------------------------
+# Control-plane primitives
+#
+# deploy_if_changed:
+#   - Content-addressed deployment (SHA256)
+#   - Atomic remote update via temp file + rename
+#   - No timestamp reliance
+#
+# Requirements:
+#   - ssh, scp available on router
+#   - SHA-256 hashing via sha256sum(1) OR busybox sha256sum
+# ------------------------------------------------------------
+
+# Capability probe:
+#   - Detects available local and remote tools
+#   - Reports which control-plane features are enabled, degraded, or unavailable
+#   - Does NOT enforce policy or fail builds
+# NOTE:
+#   This probe reports high-level control-plane capabilities.
+#   Individual recipes remain responsible for asserting their own tool dependencies.
+.PHONY: check-tools
+check-tools:
+	@echo "🔍 Router capability report"
+	@echo
+
+	@command -v ssh >/dev/null 2>&1 \
+		&& echo "✅ CAP_REMOTE_EXEC:        enabled (ssh)" \
+		|| echo "❌ CAP_REMOTE_EXEC:        unavailable → no remote recipes possible"
+
+	@command -v scp >/dev/null 2>&1 \
+		&& echo "✅ CAP_FILE_DEPLOY:        enabled (scp)" \
+		|| echo "❌ CAP_FILE_DEPLOY:        unavailable → deploy_if_changed disabled"
+
+	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
+		'command -v sha256sum >/dev/null 2>&1 || echo test | busybox sha256sum >/dev/null 2>&1' \
+		&& echo "✅ CAP_CONTENT_ADDRESSING: enabled (sha256sum or busybox sha256sum)" \
+		|| echo "⚠️  CAP_CONTENT_ADDRESSING: sha256sum unavailable → deploy_if_changed cannot compare hashes"
+
+	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '[ -x /jffs/scripts/firewall-start ]' >/dev/null 2>&1 \
+		&& echo "✅ CAP_FIREWALL:           enabled (firewall-start hook)" \
+		|| echo "⚠️  CAP_FIREWALL:           degraded → no firewall-start hook"
+
+	@echo
+	@echo "ℹ️  Informational only — no enforcement performed"
+
+# Contract:
+#   - deploy_if_changed is safe-by-construction: it verifies required local and remote tools
+#     before performing any remote state changes.
 define deploy_if_changed
 	@set -e; \
+	for cmd in ssh scp sed awk; do \
+		command -v $$cmd >/dev/null 2>&1 || { \
+			echo "❌ Missing required local command: $$cmd" >&2; exit 1; }; \
+	done; \
 	SRC="$$(echo '$(1)' | sed 's/^ *//;s/ *$$//')"; \
+	[ -f "$$SRC" ] || { echo "❌ Missing source: $$SRC" >&2; exit 1; }; \
 	DST="$$(echo '$(2)' | sed 's/^ *//;s/ *$$//')"; \
+	TMP="$$DST.tmp.$$"; \
 	LOCAL_SHA=$$(sha256sum "$$SRC" | awk '{print $$1}'); \
-	REMOTE_SHA=$$(ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
-		"sha256sum \"$$DST\" 2>/dev/null | awk '{print \$$1}'" || true); \
+	REMOTE_SHA=$$(ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) "\
+		if [ -f '$$DST' ]; then \
+			if command -v sha256sum >/dev/null 2>&1; then \
+				sha256sum '$$DST' | sed 's/ .*//'; \
+			else \
+				/bin/busybox sha256sum '$$DST' | sed 's/ .*//'; \
+			fi; \
+		fi" || true); \
 	if [ "$$LOCAL_SHA" != "$$REMOTE_SHA" ]; then \
 		echo "🚀 Deploying $$(basename "$$DST")..."; \
 		ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
-			"mkdir -p \"$$(dirname "$$DST")\""; \
-		scp -q -O -P $(ROUTER_SSH_PORT) \
-			"$$SRC" "$(ROUTER_HOST):$$DST"; \
+			"/bin/busybox mkdir -p '$$(dirname "$$DST")' && /bin/busybox rm -f '$$TMP'"; \
+		scp -q -O -P $(ROUTER_SSH_PORT) "$$SRC" "$(ROUTER_HOST):$$TMP"; \
+		UPLOADED_SHA=$$(ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) "\
+			if command -v sha256sum >/dev/null 2>&1; then \
+				sha256sum '$$TMP' | sed 's/ .*//'; \
+			else \
+				/bin/busybox sha256sum '$$TMP' | sed 's/ .*//'; \
+			fi"); \
+		[ "$$LOCAL_SHA" = "$$UPLOADED_SHA" ] || { \
+			echo '❌ Uploaded file hash mismatch' >&2; exit 1; }; \
 		ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
-			"chmod 0755 \"$$DST\""; \
+			"/bin/busybox chmod 0755 '$$TMP' && /bin/busybox mv -f '$$TMP' '$$DST'"; \
 		echo "✅ $$(basename "$$DST") updated"; \
 	else \
 		echo "✨ $$(basename "$$DST") already up-to-date"; \
@@ -49,250 +118,15 @@ define deploy_if_changed
 endef
 
 
+
+include mk/router/ssh.mk
+include mk/router/bootstrap.mk
+include mk/router/firewall.mk
+include mk/router/health.mk
+
 .PHONY: router-ready
 router-ready: firewall-hardened dnsmasq-cache
 	@echo "🛡️ Router base services converged"
 
 .PHONY: router-prepare
-router-prepare: router-ready require-run-as-root fix-acme-perms
-	@$(run_as_root) $(CERTS_DEPLOY) prepare
-
-.PHONY: fix-acme-perms
-fix-acme-perms:
-	@if [ -d "$(ACME_HOME)" ]; then \
-		echo "[acme] fixing permissions"; \
-		$(run_as_root) find "$(ACME_HOME)" -type f -name "*.key" -exec chmod 600 {} \; ; \
-		$(run_as_root) find "$(ACME_HOME)" -type f ! -name "*.key" -exec chmod 644 {} \; ; \
-		$(run_as_root) find "$(ACME_HOME)" -type d -exec chmod 700 {} \; ; \
-		$(run_as_root) chown -R root:root "$(ACME_HOME)"; \
-	fi
-
-.PHONY: ssh-check
-ssh-check:
-	@command -v nc >/dev/null 2>&1 || \
-	( \
-		echo "❌ Missing dependency: nc (netcat)"; \
-		echo "Install it with: sudo apt install netcat-openbsd"; \
-		exit 1; \
-	)
-	@nc -z -w 2 $(ROUTER_ADDR) $(ROUTER_SSH_PORT) >/dev/null 2>&1 || \
-	( \
-		echo "❌ Router unreachable on $(ROUTER_ADDR):$(ROUTER_SSH_PORT)"; \
-		echo "   (host down, port filtered, or network issue)"; \
-		exit 1; \
-	)
-	@ssh -p $(ROUTER_SSH_PORT) -o BatchMode=yes -o ConnectTimeout=5 \
-		$(ROUTER_HOST) true >/dev/null 2>&1 || \
-	( \
-		echo "❌ SSH reachable but authentication failed"; \
-		exit 1; \
-	)
-
-.PHONY: require-run-as-root
-require-run-as-root: | ssh-check
-	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
-		test -x "$(RUN_AS_ROOT)" || \
-		( \
-			echo "❌ run-as-root missing"; \
-			echo "ℹ️  Router helpers not installed (likely after reset)"; \
-			echo "➡️  Recovery: make bootstrap"; \
-			exit 1; \
-		) \
-	'
-
-.PHONY: install-run-as-root
-install-run-as-root: | ssh-check
-	$(call deploy_if_changed,\
-		$(SRC_SCRIPTS)/run-as-root.sh,\
-		$(RUN_AS_ROOT))
-
-.PHONY: install-ddns
-install-ddns: | ssh-check
-	$(call deploy_if_changed,\
-		$(SRC_DDNS)/ddns-start,\
-		$(ROUTER_SCRIPTS)/ddns-start)
-
-.PHONY: dnsmasq-cache
-dnsmasq-cache: | ssh-check
-	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
-		mkdir -p /jffs/configs && \
-		touch $(DNSMASQ_CONF_ADD) && \
-		if grep -qx "$(DNSMASQ_CACHE_LINE)" $(DNSMASQ_CONF_ADD); then \
-			echo "dnsmasq cache OK"; \
-		else \
-			echo "$(DNSMASQ_CACHE_LINE)" > $(DNSMASQ_CONF_ADD); \
-			service restart_dnsmasq; \
-		fi \
-	'
-
-.PHONY: firewall-install
-firewall-install: | ssh-check require-run-as-root
-	$(call deploy_if_changed,\
-		$(SRC_SCRIPTS)/firewall-start,\
-		/jffs/scripts/firewall-start)
-
-.PHONY: firewall-base-running
-firewall-base-running: | ssh-check
-	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
-		iptables -L INPUT >/dev/null 2>&1 || \
-		{ echo "❌ Base firewall not running"; exit 1; } \
-	'
-
-#  asserts observed enforcement, not configuration
-.PHONY: firewall-skynet-running
-firewall-skynet-running: firewall-install firewall-base-running | ssh-check
-	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
-		set -e; \
-		echo "→ Skynet firewall:"; \
-		iptables -L SDN_FI >/dev/null 2>&1 || \
-			{ echo "   ❌ Skynet INPUT chain missing"; exit 1; }; \
-		iptables -L SDN_FF >/dev/null 2>&1 || \
-			{ echo "   ❌ Skynet FORWARD chain missing"; exit 1; }; \
-		iptables -L INPUT -n | grep -q "SDN_FI" || \
-			{ echo "   ❌ Skynet INPUT chain not referenced"; exit 1; }; \
-		iptables -L FORWARD -n | grep -q "SDN_FF" || \
-			{ echo "   ❌ Skynet FORWARD chain not referenced"; exit 1; }; \
-		echo "   ✓ Skynet chains present and active" \
-	'
-
-.PHONY: firewall-started
-firewall-started: firewall-base-running
-
-.PHONY: firewall-hardened
-firewall-hardened: firewall-started firewall-skynet-running firewall-ipv6-forwarding
-	@echo "🛡️ Firewall hardened and actively blocking threats"
-
-.PHONY: firewall
-firewall: firewall-skynet-running
-
-.PHONY: bootstrap
-bootstrap: install-run-as-root install-ddns dnsmasq-cache firewall-install
-	@echo "✅ Bootstrap complete"
-
-.PHONY: install-ipv6-ula
-install-ipv6-ula: | ssh-check
-	$(call deploy_if_changed,$(SRC_SCRIPTS)/provision-ipv6-ula.sh,/jffs/scripts/provision-ipv6-ula.sh)
-
-.PHONY: ensure-ipv6-ula
-ensure-ipv6-ula: install-ipv6-ula
-	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '/jffs/scripts/provision-ipv6-ula.sh'
-
-.PHONY: router-health
-router-health: ssh-check
-	@echo "🩺 Router health check"
-	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
-		set -e; \
-		echo "→ System:"; \
-			uname -a; \
-		echo "→ Uptime:"; \
-			uptime; \
-		echo "→ Storage:"; \
-			df -h /jffs /tmp/mnt/sda || true; \
-		echo "→ Firewall:"; \
-			if ( iptables -S | grep -qE -- "-A .* -p tcp .*--dport 443 .* -j ACCEPT" ); then \
-				echo " ✓ HTTPS ingress allowed"; \
-			else \
-				echo " ❌ WAN HTTPS intentionally blocked"; exit 1; \
-			fi; \
-		echo "→ WireGuard:"; \
-			if iptables -L WGSI >/dev/null 2>&1; then \
-				echo "   ✓ WGSI (WireGuard server ingress) present"; \
-				iptables -L WGSI -n -v | sed "s/^/     /"; \
-			else \
-				echo "   ❌ WGSI chain missing"; exit 1; \
-			fi; \
-			if iptables -L WGCI >/dev/null 2>&1; then \
-				echo "   ✓ WGCI (WireGuard client ingress) present"; \
-				iptables -L WGCI -n -v | sed "s/^/     /"; \
-			else \
-				echo "   ❌ WGCI chain missing"; exit 1; \
-			fi; \
-		echo "→ Caddy:"; \
-			test -x "$(CADDY_BIN)" || { echo "   ❌ binary missing"; exit 1; }; \
-			pidof caddy >/dev/null || { echo "   ❌ process not running"; exit 1; }; \
-			$(CADDY_BIN) validate --config $(CADDYFILE_DST) >/dev/null 2>&1 || \
-				{ echo "   ❌ config invalid"; exit 1; }; \
-			echo "   ✓ binary present"; \
-			echo "   ✓ process running"; \
-			echo "   ✓ config valid"; \
-			echo "→ IPv6 FORWARD hook scope:"; \
-			if ip6tables -S FORWARD | grep -q -- "-j WGSF6"; then \
-				echo "   ❌ WGSF6 is globally hooked into FORWARD"; exit 1; \
-			fi; \
-			ip6tables -S FORWARD | grep -q -- "^-A FORWARD -i wg\+ -j WGSF6" || \
-				{ echo "   ❌ missing FORWARD -i wg+ -> WGSF6"; exit 1; }; \
-			ip6tables -S FORWARD | grep -q -- "^-A FORWARD -o wg\+ -j WGSF6" || \
-				{ echo "   ❌ missing FORWARD -o wg+ -> WGSF6"; exit 1; }; \
-			echo "   ✓ WGSF6 scoped to WireGuard only"; \
-		echo "✅ Router healthy" \
-	'
-
-.PHONY: router-health-strict
-router-health-strict: router-health | ssh-check
-	@echo "🔒 Enforcing strict security invariants"
-	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
-		set -e; \
-		echo "→ OpenVPN:"; \
-			if pidof openvpn >/dev/null 2>&1; then \
-				echo "   ❌ OpenVPN process running"; exit 1; \
-			fi; \
-			echo "   ✓ OpenVPN disabled"; \
-		echo "→ PPTP:"; \
-		if pidof pptpd >/dev/null 2>&1; then \
-			echo "   ❌ PPTP daemon running"; exit 1; \
-		fi; \
-		echo "   ✓ PPTP disabled"; \
-		echo "→ IPsec:"; \
-		if pidof charon >/dev/null 2>&1 || pidof pluto >/dev/null 2>&1; then \
-			echo "   ❌ IPsec daemon running"; exit 1; \
-		fi; \
-		echo "   ✓ IPsec disabled"; \
-		echo "→ SSH access:"; \
-		if iptables -L INPUT -n | grep -qE "ACCEPT.*tcp.*dpt:(22|2222).*0.0.0.0/0"; then \
-			echo "   ❌ SSH exposed via firewall"; exit 1; \
-		fi; \
-		echo "   ✓ SSH not exposed via firewall"; \
-		echo "→ Web UI:"; \
-		if iptables -L INPUT -n | grep -qE "ACCEPT.*tcp.*dpt:(80|443).*0.0.0.0/0"; then \
-			echo "   ❌ Web UI exposed on WAN"; exit 1; \
-		fi; \
-		echo "   ✓ Web UI not exposed on WAN"; \
-		echo "→ SSH keys:"; \
-		echo " ✓ SSH key authentication works"; \
-		echo "→ IPv6 ULA:"; \
-		nvram get ipv6_ula_enable | grep -qx 1 || { echo "   ❌ ULA disabled"; exit 1; }; \
-		nvram get ipv6_ula_prefix | grep -qx 'fd89:7a3b:42c0::/48' || { echo "   ❌ ULA prefix mismatch"; exit 1; }; \
-		echo "   ✓ ULA configured"; \
-		echo "✅ Strict security posture verified" \
-	'
-
-.PHONY: firewall-audit
-firewall-audit: | ssh-check
-	@echo "🔍 Router firewall audit"
-	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
-		iptables  -S INPUT; \
-		iptables  -S FORWARD; \
-		ip6tables -S INPUT; \
-		ip6tables -S FORWARD; \
-		wg show \
-	'
-
-.PHONY: firewall-ipv6-forwarding
-firewall-ipv6-forwarding: | ssh-check
-	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) '\
-		set -e; \
-		echo "→ IPv6 forwarding (WireGuard scope):"; \
-		ip6tables -S WGSF6 >/dev/null 2>&1 || \
-			{ echo "   ❌ WGSF6 chain missing"; exit 1; }; \
-		ip6tables -S FORWARD | grep -q -- "^-A FORWARD -i wg\\+ -j WGSF6" || \
-			{ echo "   ❌ missing FORWARD -i wg+ → WGSF6"; exit 1; }; \
-		ip6tables -S FORWARD | grep -q -- "^-A FORWARD -o wg\\+ -j WGSF6" || \
-			{ echo "   ❌ missing FORWARD -o wg+ → WGSF6"; exit 1; }; \
-		if ip6tables -S FORWARD | grep -q -- "^-A FORWARD -j WGSF6"; then \
-			echo "   ❌ WGSF6 is globally hooked into FORWARD"; exit 1; \
-		fi; \
-		ip6tables -S WGSF6 | tail -n1 | grep -qx -- "-A WGSF6 -j DROP" || \
-			{ echo "   ❌ WGSF6 missing terminal DROP"; exit 1; }; \
-		echo "   ✓ IPv6 forwarding enforced (WireGuard-only)" \
-	'
-
+router-prepare: router-ready require-run-as-root certs-prepare
