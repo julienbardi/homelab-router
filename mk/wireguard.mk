@@ -20,23 +20,31 @@ HOST_SHA256SUM := /usr/bin/sha256sum
 # yq is a build-host tool; define it here (tools.mk is included later)
 YQ := $(TOOLS_DIR)/yq/yq
 
-wg-domain-build: $(YQ)
-	@printf 'base\tiface\tprofile\n' > domain.tsv
-	@$(YQ) eval -r '.nodes[] | .interfaces | keys | .[] | .profiles | keys | .[] | [.. | select(tag=="!!str")][0:3] | @tsv' domain.yaml >> domain.tsv
-	@$(HOST_AWK) -F '\t' '\
-		NR==1 { if ($$0 != "base\tiface\tprofile") { print "bad header: " $$0 > "/dev/stderr"; exit 1 } } \
-		NR>1 { \
-			if (index($$0, "\r")) { print "CR found on line " NR > "/dev/stderr"; exit 1 } \
-			if (index($$0, "\\t") || index($$0, "\\u0009")) { print "escaped tab sequence found on line " NR > "/dev/stderr"; exit 1 } \
-			if (NF != 3) { print "bad field count on line " NR ": " NF > "/dev/stderr"; exit 1 } \
-			if ($$1=="" || $$2=="" || $$3=="") { print "empty field on line " NR > "/dev/stderr"; exit 1 } \
-		} \
-	' domain.tsv
+.PHONY: wg-domain-build
+wg-domain-build: domain.tsv
 	@echo "✓ generated domain.tsv"
 
+domain.tsv: domain.yaml
+	@set -eu; \
+	$(YQ) -r ".nodes[] as $$node | \
+		.interfaces | to_entries[] as $$i | \
+		[ \
+			$$node, \
+			$$i.key, \
+			(if $$i.value.lan_subnets and $$i.value.internet then \"lan+wan\" \
+			 elif $$i.value.lan_subnets then \"lan\" \
+			 elif $$i.value.internet then \"wan\" \
+			 else empty end), \
+			$$i.value.server, \
+			($$i.value.vpn_subnet.ipv4 // \"\"), \
+			($$i.value.vpn_subnet.ipv6 // \"\") \
+		] | @tsv" domain.yaml \
+	| sed '1i base\tiface\tprofile\tserver\tvpn4_cidr\tvpn6_cidr' \
+	> "$@"; \
+	[ "$$(wc -l <"$@")" -gt 1 ] || { echo "❌ domain.tsv empty"; exit 1; }
 
 .PHONY: wg-deploy
-wg-deploy:
+wg-deploy: domain.tsv
 	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) 'mkdir -p $(ROUTER_SCRIPTS)'
 
 	@echo "🚀 deploying domain.tsv"
@@ -78,19 +86,20 @@ wg-preflight:
 .PHONY: wg-check
 wg-check: wg-deploy wg-preflight
 	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
-		'WG_DUMP=1 $(ROUTER_SCRIPTS)/wg-compile-domain.sh'
+		'cd "$(WG_DIR)" && WG_DUMP=1 "$(ROUTER_SCRIPTS)/wg-compile-domain.sh"'
 	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
-		'$(ROUTER_SCRIPTS)/wg-compile-alloc.sh'
+		'cd "$(WG_DIR)" && "$(ROUTER_SCRIPTS)/wg-compile-alloc.sh"'
 	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
-		'$(ROUTER_SCRIPTS)/wg-compile-keys.sh'
+		'cd "$(WG_DIR)" && "$(ROUTER_SCRIPTS)/wg-compile-keys.sh"'
 	@echo "✅ WireGuard control-plane check passed"
 
 .PHONY: wg-dump
 wg-dump: wg-domain-build wg-deploy wg-preflight
 	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
-		'WG_DUMP=1 $(ROUTER_SCRIPTS)/wg-compile-domain.sh'
+		'cd "$(WG_DIR)" && WG_DUMP=1 "$(ROUTER_SCRIPTS)/wg-compile-domain.sh"'
 	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
-		'WG_DUMP=1 $(ROUTER_SCRIPTS)/wg-compile-alloc.sh'
+		'cd "$(WG_DIR)" && WG_DUMP=1 "$(ROUTER_SCRIPTS)/wg-compile-alloc.sh"'
 	@ssh -p $(ROUTER_SSH_PORT) $(ROUTER_HOST) \
-		'WG_DUMP=1 $(ROUTER_SCRIPTS)/wg-compile-keys.sh'
+		'cd "$(WG_DIR)" && WG_DUMP=1 "$(ROUTER_SCRIPTS)/wg-compile-keys.sh"'
 	@echo "📦 WireGuard control-plane dumps generated"
+

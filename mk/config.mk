@@ -60,3 +60,12 @@ GEN_CLIENT_WRAPPER ?= /jffs/scripts/gen-client-cert-wrapper.sh
 
 COMMON_SH_SRC := $(REPO_ROOT)jffs/scripts/common.sh
 COMMON_SH_DST := $(ROUTER_SCRIPTS)/common.sh
+
+# ------------------------------------------------------------
+# Python toolchain configuration
+# ------------------------------------------------------------
+
+PYTHON        ?= python3
+PYTHON_VENV   ?= .venv
+PYTHON_BIN    := $(PYTHON_VENV)/bin/python
+PIP_BIN       := $(PYTHON_VENV)/bin/pip

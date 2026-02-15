@@ -1,9 +1,6 @@
 #!/bin/sh
 set -eu
 
-# Implements the contracts defined in contracts.inc.
-# Any deviation is a bug.
-
 IN_PLAN="plan.tsv"
 OUT_ALLOC="alloc.tsv"
 : "${WG_DUMP:=0}"
@@ -13,43 +10,47 @@ OUT_ALLOC="alloc.tsv"
 	exit 1
 }
 
-if [ "$WG_DUMP" -eq 1 ]; then
-	busybox awk -F'\t' '
-	NR == 1 {
-		if ($0 != "base\tiface\tprofile") {
-			print "❌ Invalid header in plan.tsv" > "/dev/stderr"
-			exit 1
-		}
-		next
+busybox awk -F'\t' '
+NR == 1 {
+	if ($0 != "base\tiface\tprofile\tserver\tvpn4_cidr\tvpn6_cidr") {
+		print "❌ Invalid header in plan.tsv" > "/dev/stderr"
+		exit 1
 	}
-	{
-		base = $1
-		iface = $2
-		key = base "\t" iface
-		if (!(key in slot)) {
-			slot[key] = ++count[iface]
-		}
-		rows[++n] = base "\t" iface "\t" slot[key]
-	}
-	END {
-		print "base\tiface\tslot"
-		for (i = 1; i <= n; i++) {
-			print rows[i]
-		}
-	}
-	' "$IN_PLAN" >"$OUT_ALLOC"
-	echo "✅ Generated $OUT_ALLOC"
-else
-	busybox awk -F'\t' '
-	NR == 1 {
-		if ($0 != "base\tiface\tprofile") {
-			print "❌ Invalid header in plan.tsv" > "/dev/stderr"
-			exit 1
-		}
-		next
-	}
-	{ next }
-	END { exit 0 }
-	' "$IN_PLAN" >/dev/null
-fi
+	next
+}
 
+{
+	base  = $1
+	iface = $2
+	v4    = $5
+	v6    = $6
+
+	key = base "\t" iface
+	if (!(key in idx)) {
+		idx[key] = ++count[iface]
+	}
+
+	if (v4 != "") {
+		split(v4, a, "/")
+		addr = a[1]
+		sub(/\.[0-9]+$/, "." (idx[key] + 1), addr)
+		rows[++n] = base "\t" iface "\t" addr "\t" v4
+	}
+
+	if (v6 != "") {
+		split(v6, a, "/")
+		addr = a[1]
+		sub(/::.*$/, "::" (idx[key] + 1), addr)
+		rows[++n] = base "\t" iface "\t" addr "\t" v6
+	}
+}
+
+END {
+	print "base\tiface\taddr\tcidr"
+	for (i = 1; i <= n; i++) {
+		print rows[i]
+	}
+}
+' "$IN_PLAN" >"$OUT_ALLOC"
+
+[ "$WG_DUMP" -eq 1 ] && echo "✅ Generated $OUT_ALLOC"

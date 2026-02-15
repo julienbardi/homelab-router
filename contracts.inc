@@ -505,6 +505,94 @@ Any attempt to encode goals, preferences, or aspirations
 as contracts is a contract violation.
 -------------------------------------------------------------------------------
 
+-------------------------------------------------------------------------------
+CONTRACT: Execution root & working directory confinement
+-------------------------------------------------------------------------------
+
+All control-plane scripts MUST execute with a well-defined execution root.
+
+Rules:
+
+  - Every script deployed to the router MUST explicitly set its working
+    directory at startup.
+  - The working directory MUST be the directory containing the script itself.
+  - Relative paths MUST be resolved exclusively within this directory tree.
+  - Reliance on caller-provided working directories is forbidden.
+
+Enforcement:
+
+  - Scripts MUST perform an explicit directory change at startup.
+  - Failure to establish the execution root MUST abort execution immediately.
+
+Rationale:
+
+  - Prevents accidental writes to arbitrary filesystem locations
+  - Ensures deterministic artifact placement
+  - Eliminates execution-context ambiguity
+  - Makes side effects auditable and inspectable
+
+Any script that emits files relative to an implicit or inherited working
+directory is a contract violation.
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+CONTRACT: Write confinement & side-effect boundaries
+-------------------------------------------------------------------------------
+
+Control-plane scripts MUST NOT write outside their declared ownership scope.
+
+Rules:
+
+  - Each script MUST have a single, declared output directory.
+  - All file creation, modification, or deletion MUST occur within this scope.
+  - Writing to parent directories or unrelated paths is forbidden.
+  - Temporary files MUST be created within the same confined scope.
+
+Confidentiality:
+
+  - Materialized intent, keys, or derived artifacts MUST NOT be written
+    to shared, global, or user home directories.
+  - Leakage of control-plane artifacts outside the confined scope
+    is a critical contract violation.
+
+Enforcement:
+
+  - Scripts MUST fail if an output path resolves outside the allowed scope.
+  - Silent redirection or fallback paths are forbidden.
+
+Rationale:
+
+  - Prevents accidental disclosure of sensitive material
+  - Enables reliable cleanup and disaster recovery
+  - Makes filesystem effects predictable and reviewable
+-------------------------------------------------------------------------------
+
+
+-------------------------------------------------------------------------------
+CONTRACT: Dump locality & inspectability
+-------------------------------------------------------------------------------
+
+All compiled dumps MUST be emitted into a canonical, inspectable location.
+
+Rules:
+
+  - plan.tsv, alloc.tsv, and keys.tsv MUST be written to the same directory
+    as the compiler scripts.
+  - Dump locations MUST NOT depend on invocation context.
+  - Dump emission MUST be atomic and overwrite previous dumps.
+
+Observability:
+
+  - Dump files MUST be discoverable without prior knowledge of execution context.
+  - Inspecting dumps MUST NOT require guessing or searching the filesystem.
+
+Rationale:
+
+  - Dumps are authoritative database snapshots
+  - Their location is part of the contract
+  - Inspectability is a correctness requirement, not a convenience
+-------------------------------------------------------------------------------
+
 
 -------------------------------------------------------------------------------
 CONTRACT: License & reuse

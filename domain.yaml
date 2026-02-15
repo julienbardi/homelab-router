@@ -18,6 +18,11 @@ nodes:
   - julie-acer
   - julie-elitebook
 
+profiles:
+  - lan
+  - wan
+  - lan+wan
+
 interfaces:
   # Router-hosted WireGuard server
   wgs1:

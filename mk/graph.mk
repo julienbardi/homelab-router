@@ -18,13 +18,15 @@
 #   7) tools.mk      — local tooling
 # ------------------------------------------------------------
 
-include mk/config.mk
-include mk/platform.mk
-include mk/router.mk
-include mk/wireguard.mk
-include mk/certs.mk
-include mk/caddy.mk
-include mk/tools.mk
+include $(MAKEFILE_DIR)mk/config.mk
+include $(MAKEFILE_DIR)mk/platform.mk
+include $(MAKEFILE_DIR)mk/router.mk
+include $(MAKEFILE_DIR)mk/wireguard.mk
+include $(MAKEFILE_DIR)mk/certs.mk
+include $(MAKEFILE_DIR)mk/caddy.mk
+include $(MAKEFILE_DIR)mk/tools.mk
+include $(MAKEFILE_DIR)mk/python.mk
+
 
 .PHONY: all-full
 all-full: all caddy

@@ -25,3 +25,11 @@ caddy/data/
 plan.tsv
 alloc.tsv
 keys.tsv
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Tooling
+.tools/
