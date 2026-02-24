@@ -1,0 +1,10 @@
+base	iface	lan	wan	server	vpn4_cidr	vpn6_cidr
+global	wgs1	true	true	router	10.89.13.0/24	fd89:7a3b:42c0:13::/64
+global	wg2	false	false	nas	10.2.0.0/16	
+global	wg3	true	false	nas	10.3.0.0/16	
+global	wg4	true	false	nas		fd89:7a3b:42c0:4::/64
+global	wg5	true	false	nas		fd89:7a3b:42c0:5::/64
+global	wg6	false	false	nas	10.6.0.0/16	fd89:7a3b:42c0:6::/64
+global	wg7	true	false	nas	10.7.0.0/16	fd89:7a3b:42c0:7::/64
+global	wg14	false	true	nas	10.14.0.0/16	fd89:7a3b:42c0:14::/64
+global	wg15	true	true	nas	10.15.0.0/16	fd89:7a3b:42c0:15::/64

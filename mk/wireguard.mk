@@ -21,25 +21,13 @@ HOST_SHA256SUM := /usr/bin/sha256sum
 YQ := $(TOOLS_DIR)/yq/yq
 
 .PHONY: wg-domain-build
-wg-domain-build: domain.tsv
-	@echo "✓ generated domain.tsv"
+wg-domain-build: $(YQ) domain.tsv
+	@echo "🛠️ built domain.tsv"
 
 domain.tsv: domain.yaml
 	@set -eu; \
-	$(YQ) -r ".nodes[] as $$node | \
-		.interfaces | to_entries[] as $$i | \
-		[ \
-			$$node, \
-			$$i.key, \
-			(if $$i.value.lan_subnets and $$i.value.internet then \"lan+wan\" \
-			 elif $$i.value.lan_subnets then \"lan\" \
-			 elif $$i.value.internet then \"wan\" \
-			 else empty end), \
-			$$i.value.server, \
-			($$i.value.vpn_subnet.ipv4 // \"\"), \
-			($$i.value.vpn_subnet.ipv6 // \"\") \
-		] | @tsv" domain.yaml \
-	| sed '1i base\tiface\tprofile\tserver\tvpn4_cidr\tvpn6_cidr' \
+	$(YQ) -r '.interfaces | to_entries[] | .key as $$iface | .value as $$i | ["global", $$iface, ($$i.lan_subnets != null), ($$i.internet // false), $$i.server, ($$i.vpn_subnet.ipv4 // ""), ($$i.vpn_subnet.ipv6 // "")] | @tsv' domain.yaml \
+	| sed '1i base\tiface\tlan\twan\tserver\tvpn4_cidr\tvpn6_cidr' \
 	> "$@"; \
 	[ "$$(wc -l <"$@")" -gt 1 ] || { echo "❌ domain.tsv empty"; exit 1; }
 
